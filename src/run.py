@@ -81,6 +81,7 @@ class Run:
         Load the snapshot data into the database.
         """
         await self.data_processer.clear_all_tables()
+        await self.data_processer.create_all_table()
 
         data_path = os.path.abspath(
             os.path.join(os.path.dirname(__file__), "data/snapshot/")

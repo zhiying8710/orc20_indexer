@@ -166,6 +166,7 @@ class Pgsql(Interface):
             password=env.str("PGSQL_PASSWD"),
             database=env.str("PGSQL_DB"),
             host=env.str("PGSQL_HOST"),
+            port=env.int("PGSQL_PORT")
         )
 
     async def close(self):
@@ -189,6 +190,13 @@ class Pgsql(Interface):
             logger.error(error)
             raise Exception(error)
         return
+
+    async def create_all_table(self):
+        await self.create_table(self.token, self.token_index_list)
+        await self.create_table(self.balance, self.balance_index_list)
+        await self.create_table(self.pending_inscriptions)
+        await self.create_table(self.otc, self.otc_index_list)
+        await self.create_table(self.otc_record, self.otc_record_index_list)
 
     async def create_table(self, table, index_list=[]):
         try:
