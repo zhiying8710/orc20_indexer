@@ -192,9 +192,10 @@ class Pgsql(Interface):
         return
 
     async def create_all_table(self):
+        await self.create_table(self.event)
+        await self.create_table(self.pending_inscriptions)
         await self.create_table(self.token, self.token_index_list)
         await self.create_table(self.balance, self.balance_index_list)
-        await self.create_table(self.pending_inscriptions)
         await self.create_table(self.otc, self.otc_index_list)
         await self.create_table(self.otc_record, self.otc_record_index_list)
 
