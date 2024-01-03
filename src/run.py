@@ -7,8 +7,10 @@ import asyncio
 from environs import Env
 from loguru import logger
 
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+from src import bitcoin_cli
 from src.log import setup_logging
 
 setup_logging()
@@ -17,6 +19,7 @@ from src.main import handle_event
 from src.data.processer.pgsql import Pgsql as DataProcesser
 from src.data.redis_helper import RedisHelper
 from src.alert import send_alert
+from src.data.event.event import EventIndexer
 
 
 class Run:
@@ -44,6 +47,8 @@ class Run:
 
         self.default_block_confirmations = 6
         self.default_sleep_seconds = 10
+
+        self.event_indexer = None
 
     def set_signal(self):
         """
@@ -115,6 +120,12 @@ class Run:
         await self.data_processer.batch_save_balances_in_dict(holders)
 
         return
+
+    async def get_chain_current_block_height(self):
+        """
+        get the current max block height on chain
+        """
+        return await bitcoin_cli.get_block_count()
 
     async def get_latest_block_height(self):
         """
@@ -193,37 +204,55 @@ class Run:
 
         return
 
+    async def restart_event_indexer(self, init_block_height):
+        if self.event_indexer:
+            await self.event_indexer.stop()
+        self.event_indexer = EventIndexer(self.data_processer)
+        asyncio.create_task(self.event_indexer.run(init_block_height))
+
     async def run(self):
         """
         Run the main execution loop.
         """
-        logger.info("loading snapshot ...")
-        await self.load_snapshot()
-        logger.info("done")
 
         start_block_height = self.start_block_height
+        backup_block_height = await self.data_processer.get_backup_block_height()
+        if backup_block_height:
+            start_block_height = backup_block_height + 1
+            await self.data_processer.restore_all_table()
+        else:
+            backup_block_height = start_block_height - 1
+            logger.info("loading snapshot ...")
+            await self.load_snapshot()
+            logger.info("snapshot loaded")
+
+        await self.restart_event_indexer(start_block_height)
 
         while not self.stop_flag:
-            latest_block_height = await self.get_latest_block_height()
+            latest_block_height = await self.event_indexer.get_latest_block_height()
+            if latest_block_height is None:
+                await self.handle_block(self.mempool_block_height, True)
+                logger.debug(f"Waiting for new block ...")
+                time.sleep(self.default_sleep_seconds)
+                continue
 
-            while start_block_height <= latest_block_height and not self.stop_flag:
-                if start_block_height == latest_block_height:
-                    await self.reprocess_block(latest_block_height)
+            if await self.event_indexer.detect_reorg(latest_block_height):
+                logger.warning("Reorg detected, restore tables")
+                if await self.data_processer.get_backup_block_height():
+                    await self.data_processer.restore_all_table()
+                await self.restart_event_indexer(backup_block_height + 1)
+                continue
 
-                await self.handle_block(start_block_height)
-                start_block_height += 1
+            logger.info(f"Handle block {latest_block_height}")
+            await self.handle_block(latest_block_height)
+            backup_block_height = (await self.data_processer.get_backup_block_height()) or -1
+            if latest_block_height - backup_block_height >= 12:
+                await self.data_processer.backup_all_table()
+                await self.data_processer.mark_backup_block_height(latest_block_height)
+                logger.info(f"Backup on block {latest_block_height}")
 
-            if self.stop_flag:
-                break
-
-            await self.handle_block(self.mempool_block_height, True)
-            if self.stop_flag:
-                break
-
-            logger.debug(
-                f"current block:{start_block_height}, latest blcok: {latest_block_height},  Waiting for new block ..."
-            )
-            time.sleep(self.default_sleep_seconds)
+        await self.event_indexer.stop()
+        logger.info("Stopped")
 
     async def main(self):
         """

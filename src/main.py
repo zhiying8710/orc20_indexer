@@ -24,6 +24,7 @@ async def handle_event(
     """
     event.valid = True
     event.error = ""
+    event.handled = True
 
     content = event.content
 

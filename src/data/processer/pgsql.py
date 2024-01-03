@@ -4,6 +4,7 @@ import asyncio
 from environs import Env
 from typing import Union, Tuple
 import sqlalchemy as sa
+from sqlalchemy import func
 from sqlalchemy.sql.ddl import CreateTable, CreateIndex
 from sqlalchemy.dialects.postgresql import ENUM, JSON, ARRAY
 from sqlalchemy.dialects.postgresql import insert
@@ -13,7 +14,7 @@ from loguru import logger
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
 
 from src.data.processer.interface import Interface
-from src.structure import Event, Token, Balance, Pending_Inscriptions, OTC, OTC_Record
+from src.structure import Event, Token, Balance, Pending_Inscriptions, OTC, OTC_Record, Backup_Height
 
 
 class Pgsql(Interface):
@@ -37,9 +38,14 @@ class Pgsql(Interface):
             sa.Column("function_id", sa.BigInteger),
             sa.Column("valid", sa.Boolean),
             sa.Column("error", sa.String(255)),
+            sa.Column("handled", sa.Boolean),
         )
+        self.event_index_list = [
+            sa.Index("block_height", self.event.c.block_height),
+            sa.Index("handled", self.event.c.handled),
+        ]
 
-        self.pending_inscriptions = sa.Table(
+        self.pending_inscriptions = self.pending_inscriptions_backup = sa.Table(
             "pending_inscriptions",
             metadata,
             # address
@@ -47,7 +53,7 @@ class Pgsql(Interface):
             sa.Column("inscriptions", ARRAY(sa.String(255)), default=[]),
         )
 
-        self.token = sa.Table(
+        self.token = self.token_backup = sa.Table(
             "token",
             metadata,
             # tid: inscription number
@@ -82,8 +88,12 @@ class Pgsql(Interface):
             sa.Index("deployer", self.token.c.deployer),
             sa.Index("inscription_id", self.token.c.inscription_id),
         ]
+        self.token_index_list_backup = [
+            sa.Index("deployer", self.token_backup.c.deployer),
+            sa.Index("inscription_id", self.token_backup.c.inscription_id),
+        ]
 
-        self.balance = sa.Table(
+        self.balance = self.balance_backup = sa.Table(
             "balance",
             metadata,
             # {address}-{tid: inscription_number}
@@ -103,8 +113,12 @@ class Pgsql(Interface):
             sa.Index("tid", self.balance.c.tid),
             sa.Index("address", self.balance.c.address),
         ]
+        self.balance_index_list_backup = [
+            sa.Index("tid", self.balance_backup.c.tid),
+            sa.Index("address", self.balance_backup.c.address),
+        ]
 
-        self.otc = sa.Table(
+        self.otc = self.otc_backup = sa.Table(
             "otc",
             metadata,
             # oid: inscription number
@@ -135,8 +149,14 @@ class Pgsql(Interface):
             sa.Index("tid1", self.otc.c.tid1),
             sa.Index("tid2", self.otc.c.tid2),
         ]
+        self.otc_index_list_backup = [
+            sa.Index("owner", self.otc_backup.c.owner),
+            sa.Index("inscription_id", self.otc_backup.c.inscription_id),
+            sa.Index("tid1", self.otc_backup.c.tid1),
+            sa.Index("tid2", self.otc_backup.c.tid2),
+        ]
 
-        self.otc_record = sa.Table(
+        self.otc_record = self.otc_record_backup = sa.Table(
             "otc_record",
             metadata,
             # event id
@@ -155,6 +175,17 @@ class Pgsql(Interface):
             sa.Index("inscription_id", self.otc_record.c.inscription_id),
             sa.Index("address", self.otc_record.c.address),
         ]
+        self.otc_record_index_list_backup = [
+            sa.Index("oid", self.otc_record_backup.c.oid),
+            sa.Index("inscription_id", self.otc_record_backup.c.inscription_id),
+            sa.Index("address", self.otc_record_backup.c.address),
+        ]
+        self.backup_height = sa.Table(
+            "backup_height",
+            metadata,
+            sa.Column("id", sa.BigInteger, primary_key=True, unique=True),
+            sa.Column("block_height", sa.BigInteger),
+        )
 
     # ==================== initialize ====================
 
@@ -178,6 +209,56 @@ class Pgsql(Interface):
             logger.error(error)
             raise Exception(error)
 
+    async def backup_all_table(self):
+        logger.info(f"Pgsql::backup_all_table: backup all table")
+        done, _ = await asyncio.wait([
+            asyncio.create_task(self.backup_table("token", self.token_index_list_backup)),
+            asyncio.create_task(self.backup_table("pending_inscriptions")),
+            asyncio.create_task(self.backup_table("balance", self.balance_index_list_backup)),
+            asyncio.create_task(self.backup_table("otc", self.otc_index_list_backup)),
+            asyncio.create_task(self.backup_table("otc_record", self.otc_record_index_list_backup)),
+        ])
+        for fut in done:
+            ex = fut.exception()
+            if ex:
+                raise ex
+
+    async def backup_table(self, origin_table_name, index_list=[]):
+        try:
+            async with self.engine.acquire() as conn:
+                await conn.execute(f'DROP TABLE IF EXISTS "{origin_table_name}_backup" CASCADE')
+                await conn.execute(f'CREATE TABLE "{origin_table_name}_backup" AS SELECT * FROM {origin_table_name};')
+                for index in index_list:
+                    await conn.execute(CreateIndex(index, if_not_exists=True))
+        except Exception as e:
+            error = f"Pgsql::create_table: Failed to backup table {e}"
+            logger.error(error)
+            raise Exception(error)
+
+    async def restore_all_table(self):
+        done, _ = await asyncio.wait([
+            asyncio.create_task(self.restore_table("token")),
+            asyncio.create_task(self.restore_table("pending_inscriptions")),
+            asyncio.create_task(self.restore_table("balance")),
+            asyncio.create_task(self.restore_table("otc")),
+            asyncio.create_task(self.restore_table("otc_record")),
+        ])
+        for fut in done:
+            ex = fut.exception()
+            if ex:
+                raise ex
+
+    async def restore_table(self, origin_table_name):
+        try:
+            async with self.engine.acquire() as conn:
+                await conn.execute(f'ALTER TABLE {origin_table_name} RENAME TO {origin_table_name}_temp;')
+                await conn.execute(f'ALTER TABLE {origin_table_name}_backup RENAME TO {origin_table_name};')
+                await conn.execute(f'DROP TABLE {origin_table_name}_temp;')
+        except Exception as e:
+            error = f"Pgsql::create_table: Failed to restore table {e}"
+            logger.error(error)
+            raise Exception(error)
+
     async def clear_table(self, table, table_name, index_list=[]):
         try:
             async with self.engine.acquire() as conn:
@@ -192,7 +273,8 @@ class Pgsql(Interface):
         return
 
     async def create_all_table(self):
-        await self.create_table(self.event)
+        await self.create_table(self.backup_height)
+        await self.create_table(self.event, self.event_index_list)
         await self.create_table(self.pending_inscriptions)
         await self.create_table(self.token, self.token_index_list)
         await self.create_table(self.balance, self.balance_index_list)
@@ -453,5 +535,56 @@ class Pgsql(Interface):
                 return sorted_ret_events
         except Exception as e:
             error = f"Pgsql::get_events_by_block_height: Failed to get events {e}"
+            logger.error(error)
+            raise Exception(error)
+
+    async def get_backup_block_height(self):
+        try:
+            async with self.engine.acquire() as conn:
+                query = self.backup_height.select()
+                result = await conn.execute(query)
+                record = await result.fetchone()
+                if record is None:
+                    return None
+                return record['block_height']
+        except Exception as e:
+            error = f"Pgsql::get_backup_block_height: Failed to get backup height {e}"
+            logger.error(error)
+            raise Exception(error)
+
+    async def mark_backup_block_height(self, backup_block_height):
+        try:
+            insert_stmt = insert(self.backup_height).values(vars(Backup_Height(1, backup_block_height)))
+            on_conflict_stmt = insert_stmt.on_conflict_do_update(
+                index_elements=["id"], set_={c.name: c for c in insert_stmt.excluded}
+            )
+            async with self.engine.acquire() as conn:
+                await conn.execute(on_conflict_stmt)
+        except Exception as e:
+            error = f"Pgsql::get_backup_block_height: Failed to get backup height {e}"
+            logger.error(error)
+            raise Exception(error)
+
+    async def delete_event_by_block(self, block_height):
+        try:
+            async with self.engine.acquire() as conn:
+                delete_ = self.event.delete().where(self.event.c.block_height >= block_height)
+                await conn.execute(delete_)
+        except Exception as e:
+            error = f"Pgsql::delete_event_by_block: Failed to delete event by height {e}"
+            logger.error(error)
+            raise Exception(error)
+
+    async def get_min_unhandled_block_height(self):
+        try:
+            async with self.engine.acquire() as conn:
+                query = self.event.select(func.min(self.event.c.block_height).label('block_height')).where(self.event.c.handled == False)
+                result = await conn.execute(query)
+                record = await result.fetchone()
+                if not record:
+                    return None
+                return record['block_height']
+        except Exception as e:
+            error = f"Pgsql::get_min_unhandled_block_height: Failed to min unhandled event height {e}"
             logger.error(error)
             raise Exception(error)

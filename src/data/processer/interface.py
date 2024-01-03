@@ -156,3 +156,21 @@ class Interface(ABC):
             Union[List[OTC_Record], None]: The list of OTC trade records if found, None otherwise.
         """
         return None
+
+    @abstractmethod
+    async def delete_event_by_block(self, block_height):
+        return None
+
+    @abstractmethod
+    async def get_min_unhandled_block_height(self):
+        return None
+
+    @abstractmethod
+    async def restore_all_table(self):
+        return None
+
+    @abstractmethod
+    async def get_backup_block_height(self):
+        return None
+
+

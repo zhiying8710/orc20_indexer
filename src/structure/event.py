@@ -43,6 +43,7 @@ class Event:
         function_id: int = 0,
         valid: bool = True,
         error: str = "",
+        handled: bool = False,
     ) -> None:
         self.id = id
         self.event_type = EventType[event_type]
@@ -58,6 +59,7 @@ class Event:
         self.function_id = function_id
         self.valid = valid
         self.error = error
+        self.handled = handled
 
     @property
     def __dict__(self):
@@ -82,4 +84,5 @@ class Event:
             "function_id": self.function_id,
             "valid": self.valid,
             "error": self.error,
+            "handled": self.handled
         }
