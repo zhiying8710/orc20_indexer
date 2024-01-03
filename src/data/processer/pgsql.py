@@ -581,7 +581,7 @@ class Pgsql(Interface):
     async def get_min_unhandled_block_height(self):
         try:
             async with self.engine.acquire() as conn:
-                query = self.event.select(func.min(self.event.c.block_height).label('block_height')).where(self.event.c.handled == False)
+                query = self.event.select().with_only_columns([func.min(self.event.c.block_height).label('block_height')]).where(self.event.c.handled == False)
                 result = await conn.execute(query)
                 record = await result.fetchone()
                 if not record:
