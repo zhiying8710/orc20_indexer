@@ -82,7 +82,7 @@ class EventIndexer:
             await self.engine.wait_closed()
         except Exception as e:
             error = f"Mysql::close: Failed close database connection {e}"
-            logger.error(error)
+            logger.error(exc_info=error)
             raise Exception(error)
 
     async def get_inscription_by_id(self, inscription_id: str) -> Union[Inscription, None]:
@@ -96,7 +96,7 @@ class EventIndexer:
                 return Inscription(**record)
         except Exception as e:
             error = f"Mysql::get_inscription_by_id: Failed to get inscription {e}"
-            logger.error(error)
+            logger.error(exc_info=error)
             raise Exception(error)
 
     async def get_inscription_transaction_by_id(self, inscription_id: str, txid: str) -> Union[Inscription_Transaction, None]:
@@ -117,7 +117,7 @@ class EventIndexer:
                 return Inscription_Transaction(**tx_record)
         except Exception as e:
             error = f"Mysql::get_inscription_transaction_by_id: Failed to get inscription transaction {e}"
-            logger.error(error)
+            logger.error(exc_info=error)
             raise Exception(error)
 
     async def get_inscription_transactions_by_txid(self, txid: str) -> Union[list[Inscription_Transaction], None]:
@@ -125,7 +125,7 @@ class EventIndexer:
             async with self.engine.acquire() as conn:
                 query = self.inscription_transaction.select().where(
                     self.inscription_transaction.c.txid == txid
-                ).where(self.inscription_transaction.c.handled == 1)
+                )
                 result = await conn.execute(query)
                 tx_records = await result.fetchall()
                 if tx_records is None:
@@ -138,7 +138,7 @@ class EventIndexer:
                 return ret_tx_records
         except Exception as e:
             error = f"Mysql::get_block_inscription_transactions: Failed to get block inscription transactions {e}"
-            logger.error(error)
+            logger.error(exc_info=error)
             raise Exception(error)
 
     async def get_block(self, block_height):
@@ -181,7 +181,7 @@ class EventIndexer:
                         inscription_txs = None
                         while not self.stopped:
                             inscription_txs = await self.get_inscription_transactions_by_txid(txid)
-                            if inscription_txs:
+                            if inscription_txs and not [inscription_tx for inscription_tx in inscription_txs if not inscription_tx.handled]:
                                 break
                             await asyncio.sleep(1)
                         if not inscription_txs:
@@ -241,7 +241,7 @@ class EventIndexer:
                             inscription_tx = None
                             while not self.stopped:
                                 inscription_tx = await self.get_inscription_transaction_by_id(inscription_id, txid)
-                                if inscription_tx:
+                                if inscription_tx and inscription_tx.handled:
                                     break
                                 await asyncio.sleep(1)
                             if not inscription_tx:
