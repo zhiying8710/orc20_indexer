@@ -246,6 +246,7 @@ class EventIndexer:
                             while not self.stopped:
                                 logger.info(f"Get inscription {inscription_id} tx {txid} inscription transactions")
                                 inscription_tx = await self.get_inscription_transaction_by_id(inscription_id, txid)
+                                print(inscription_tx.__dict__)
                                 if inscription_tx and inscription_tx.handled:
                                     break
                                 await asyncio.sleep(1)
