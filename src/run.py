@@ -208,6 +208,7 @@ class Run:
         if self.event_indexer:
             await self.event_indexer.stop()
         self.event_indexer = EventIndexer(self.data_processer)
+        await self.event_indexer.init()
         asyncio.create_task(self.event_indexer.run(init_block_height))
 
     async def run(self):

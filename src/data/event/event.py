@@ -59,6 +59,13 @@ class EventIndexer:
             sa.Column("handled", sa.BOOLEAN),
         )
 
+        self.engine = None
+        self.stopped = False
+        self.running = True
+        self.data_processer = data_processer
+        self.blocks = {}
+
+    async def init(self):
         env = Env()
         env.read_env()
         self.engine = await create_engine(
@@ -68,10 +75,6 @@ class EventIndexer:
             host=env.str("MYSQL_HOST"),
             port=env.int("MYSQL_PORT")
         )
-        self.stopped = False
-        self.running = True
-        self.data_processer = data_processer
-        self.blocks = {}
 
     async def close(self):
         try:
@@ -282,28 +285,31 @@ class EventIndexer:
                 raise ex
 
     async def run(self, init_block_height):
-        #  删除init_block_height(包含)之后的所有event
-        await self.data_processer.delete_event_by_block(init_block_height)
-        self.blocks[init_block_height - 1] = await self.get_block(init_block_height - 1)
-        current_block_height = init_block_height
-        while not self.stopped:
-            for block_height in list(self.blocks.keys()):
-                if block_height >= current_block_height:
-                    self.blocks.pop(block_height)
+        try:
+            #  删除init_block_height(包含)之后的所有event
+            await self.data_processer.delete_event_by_block(init_block_height)
+            self.blocks[init_block_height - 1] = await self.get_block(init_block_height - 1)
+            current_block_height = init_block_height
+            while not self.stopped:
+                for block_height in list(self.blocks.keys()):
+                    if block_height >= current_block_height:
+                        self.blocks.pop(block_height)
 
-            if not self.stopped and not await bitcoin_cli.get_block_hash(current_block_height):
-                logger.info('Waiting for new block')
-                await asyncio.sleep(5)
-                continue
+                if not self.stopped and not await bitcoin_cli.get_block_hash(current_block_height):
+                    logger.info('Waiting for new block')
+                    await asyncio.sleep(5)
+                    continue
 
-            if not self.stopped:
-                current_block = await self.get_block(current_block_height)
-                self.blocks[current_block_height] = current_block
-                await self.data_processer.delete_event_by_block(current_block_height)
-                txid_queue = Queue()
-                for idx, txid in enumerate(current_block['tx']):
-                    txid_queue.put_nowait((idx, txid))
-                await self.process_tx(current_block_height, txid_queue)
-                current_block_height += 1
+                if not self.stopped:
+                    current_block = await self.get_block(current_block_height)
+                    self.blocks[current_block_height] = current_block
+                    await self.data_processer.delete_event_by_block(current_block_height)
+                    txid_queue = Queue()
+                    for idx, txid in enumerate(current_block['tx']):
+                        txid_queue.put_nowait((idx, txid))
+                    await self.process_tx(current_block_height, txid_queue)
+                    current_block_height += 1
 
-        self.running = False
+            self.running = False
+        finally:
+            await self.close()
