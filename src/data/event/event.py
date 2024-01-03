@@ -153,7 +153,7 @@ class EventIndexer:
         return not cached_prev_block['hash'] == block['previousblockhash']
 
     async def get_latest_block_height(self):
-        return self.data_processer.get_min_unhandled_block_height()
+        return await self.data_processer.get_min_unhandled_block_height()
 
     async def stop(self):
         logger.warning("Waiting event indexer stop...")
