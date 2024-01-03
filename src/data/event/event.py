@@ -287,7 +287,9 @@ class EventIndexer:
     async def run(self, init_block_height):
         try:
             #  删除init_block_height(包含)之后的所有event
+            logger.info(f"Start at block {init_block_height}")
             await self.data_processer.delete_event_by_block(init_block_height)
+            logger.info("Event table cleaned")
             self.blocks[init_block_height - 1] = await self.get_block(init_block_height - 1)
             current_block_height = init_block_height
             while not self.stopped:
@@ -301,6 +303,7 @@ class EventIndexer:
                     continue
 
                 if not self.stopped:
+                    logger.info(f"Process block {current_block_height}")
                     current_block = await self.get_block(current_block_height)
                     self.blocks[current_block_height] = current_block
                     await self.data_processer.delete_event_by_block(current_block_height)
