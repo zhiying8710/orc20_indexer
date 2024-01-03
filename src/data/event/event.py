@@ -178,8 +178,10 @@ class EventIndexer:
                         break
                     tx_witness = tx_detail['vin'][0]['witness']
                     if InscriptionTransactionParser.has_inscription(tx_witness):
+                        logger.info(f"Handle tx {txid}")
                         inscription_txs = None
                         while not self.stopped:
+                            logger.info(f"Get tx {txid} inscription transactions")
                             inscription_txs = await self.get_inscription_transactions_by_txid(txid)
                             if inscription_txs and not [inscription_tx for inscription_tx in inscription_txs if not inscription_tx.handled]:
                                 break
@@ -188,6 +190,7 @@ class EventIndexer:
                             continue
                         for inscription_tx in inscription_txs:
                             if inscription_tx.genesis_tx:
+                                logger.info(f"Parse tx {txid} as genesis inscription transactions")
                                 result = InscriptionTransactionParser().parse_inscription(tx_witness)
                                 if not result:
                                     inscription = await self.get_inscription_by_id(inscription_tx.inscription_id)
@@ -232,6 +235,7 @@ class EventIndexer:
                         prev_inscription_txs = await self.get_inscription_transactions_by_txid(prev_txid)
                         if not prev_inscription_txs:
                             continue
+                        logger.info(f"Handle prev tx {txid}")
                         for prev_inscription_tx in prev_inscription_txs:
                             if self.stopped:
                                 break
@@ -240,6 +244,7 @@ class EventIndexer:
                             inscription_id = prev_inscription_tx.inscription_id
                             inscription_tx = None
                             while not self.stopped:
+                                logger.info(f"Get inscription {inscription_id} tx {txid} inscription transactions")
                                 inscription_tx = await self.get_inscription_transaction_by_id(inscription_id, txid)
                                 if inscription_tx and inscription_tx.handled:
                                     break
@@ -305,8 +310,10 @@ class EventIndexer:
                 if not self.stopped:
                     logger.info(f"Process block {current_block_height}")
                     current_block = await self.get_block(current_block_height)
+                    logger.info(f"Got block {current_block_height}")
                     self.blocks[current_block_height] = current_block
                     await self.data_processer.delete_event_by_block(current_block_height)
+                    logger.info(f"Clear {current_block_height} events")
                     txid_queue = Queue()
                     for idx, txid in enumerate(current_block['tx']):
                         txid_queue.put_nowait((idx, txid))
