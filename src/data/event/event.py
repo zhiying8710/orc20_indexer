@@ -310,7 +310,7 @@ class EventIndexer:
                     txid_queue = Queue()
                     for idx, txid in enumerate(current_block['tx']):
                         txid_queue.put_nowait((idx, txid))
-                    await self.process_tx(current_block_height, txid_queue)
+                    await self.process_tx(current_block, txid_queue)
                     current_block_height += 1
 
             self.running = False
