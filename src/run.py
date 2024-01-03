@@ -215,7 +215,7 @@ class Run:
         """
         Run the main execution loop.
         """
-
+        await self.data_processer.init_backup_height_table()
         start_block_height = self.start_block_height
         backup_block_height = await self.data_processer.get_backup_block_height()
         if backup_block_height:

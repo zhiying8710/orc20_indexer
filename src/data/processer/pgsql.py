@@ -281,6 +281,9 @@ class Pgsql(Interface):
         await self.create_table(self.otc, self.otc_index_list)
         await self.create_table(self.otc_record, self.otc_record_index_list)
 
+    async def init_backup_height_table(self):
+        await self.create_table(self.backup_height)
+
     async def create_table(self, table, index_list=[]):
         try:
             async with self.engine.acquire() as conn:
