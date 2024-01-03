@@ -311,5 +311,8 @@ class EventIndexer:
                     current_block_height += 1
 
             self.running = False
+        except Exception as e:
+            logger.error("Event indexer running into error", exc_info=e)
+            raise e
         finally:
             await self.close()
