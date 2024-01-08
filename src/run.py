@@ -155,14 +155,11 @@ class Run:
                 if is_pending is True and event.error != self.event_default_error:
                     continue
                 await handle_event(event, self.data_processer, is_pending)
-
+            return True
         except Exception as e:
             error = f"Failed to handle block: {block_height}, {e}"
             logger.exception(error)
-            await send_alert(error)
-            self.stop_flag = True
-
-        return
+            return False
 
     async def reprocess_block(self, block_height):
         """
@@ -244,7 +241,9 @@ class Run:
                 continue
 
             logger.info(f"Handle block {latest_block_height}")
-            await self.handle_block(latest_block_height)
+            if not await self.handle_block(latest_block_height):
+                self.stop_flag = True
+                break
             backup_block_height = (await self.data_processer.get_backup_block_height()) or -1
             if latest_block_height - backup_block_height >= 12:
                 await self.data_processer.backup_all_table()
