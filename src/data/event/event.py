@@ -31,8 +31,8 @@ class EventIndexer:
             "inscription",
             metadata,
             sa.Column("id", sa.BIGINT, primary_key=True, unique=True),
-            sa.Column("inscription_index", sa.BIGINT),
-            sa.Column("inscription_number", sa.String(255)),
+            sa.Column("inscription_id", sa.String(255)),
+            sa.Column("inscription_number", sa.BIGINT),
             sa.Column("owner", sa.String(255)),
             sa.Column("content_type", sa.String(255)),
             sa.Column("content", sa.Text),
@@ -323,11 +323,10 @@ class EventIndexer:
                     while not self.stopped:
                         await self.data_processer.delete_event_by_block(current_block_height)
                         logger.info(f"Clear {current_block_height} events")
-                        await self.process_tx(current_block)
-                        # try:
-                        #     await self.process_tx(current_block)
-                        # except Exception as e:
-                        #     logger.exception("Process txs error, retry")
+                        try:
+                            await self.process_tx(current_block)
+                        except Exception as e:
+                            logger.exception("Process txs error, retry")
 
                     current_block_height += 1
 
