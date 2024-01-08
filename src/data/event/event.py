@@ -226,7 +226,7 @@ class EventIndexer:
         block_height = block['height']
         block_time = block['time']
 
-        while not self.stopped and await self.is_block_all_inscription_transactions_handled(block_height):
+        while not self.stopped and not await self.is_block_all_inscription_transactions_handled(block_height):
             logger.info(f"Waiting for {block_height} all txs to be handled")
             await asyncio.sleep(1)
             continue
