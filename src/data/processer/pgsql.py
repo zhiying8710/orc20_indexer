@@ -252,9 +252,11 @@ class Pgsql(Interface):
     async def restore_table(self, origin_table_name):
         try:
             async with self.engine.acquire() as conn:
-                await conn.execute(f'ALTER TABLE {origin_table_name} RENAME TO {origin_table_name}_temp;')
-                await conn.execute(f'ALTER TABLE {origin_table_name}_backup RENAME TO {origin_table_name};')
-                await conn.execute(f'DROP TABLE {origin_table_name}_temp;')
+                result = await conn.scalar(f"SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = '{origin_table_name}_backup');")
+                if bool(result):
+                    await conn.execute(f'ALTER TABLE {origin_table_name} RENAME TO {origin_table_name}_temp;')
+                    await conn.execute(f'ALTER TABLE {origin_table_name}_backup RENAME TO {origin_table_name};')
+                    await conn.execute(f'DROP TABLE {origin_table_name}_temp;')
         except Exception as e:
             error = f"Pgsql::create_table: Failed to restore table {e}"
             logger.error(error)
