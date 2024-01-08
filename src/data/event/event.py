@@ -150,9 +150,11 @@ class EventIndexer:
         return (await ord_cli.get_inscription_content(inscription_id)).decode('utf-8')
 
     async def get_inscription_by_ids(self, inscription_ids: List[str]) -> Union[list[Inscription], None]:
+        if not inscription_ids:
+            return []
         try:
             async with self.engine.acquire() as conn:
-                query = self.inscription.select().where(self.inscription.c.inscription_id.in_(inscription_ids))
+                query = self.inscription.select().where(self.inscription.c.inscription_id.in_(tuple(inscription_ids)))
                 result = await conn.execute(query)
                 records = await result.fetchall()
                 if records is None:
