@@ -321,10 +321,11 @@ class EventIndexer:
                     while not self.stopped:
                         await self.data_processer.delete_event_by_block(current_block_height)
                         logger.info(f"Clear {current_block_height} events")
-                        try:
-                            await self.process_tx(current_block)
-                        except Exception as e:
-                            logger.exception("Process txs error, retry")
+                        await self.process_tx(current_block)
+                        # try:
+                        #     await self.process_tx(current_block)
+                        # except Exception as e:
+                        #     logger.exception("Process txs error, retry")
 
                     current_block_height += 1
 
