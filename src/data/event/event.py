@@ -3,7 +3,7 @@ import json
 import os
 import sys
 from queue import Queue, Empty
-from typing import Union
+from typing import Union, List
 
 import sqlalchemy as sa
 
@@ -149,6 +149,20 @@ class EventIndexer:
     async def get_inscription_content_by_id(self, inscription_id: str):
         return (await ord_cli.get_inscription_content(inscription_id)).decode('utf-8')
 
+    async def get_inscription_by_ids(self, inscription_ids: List[str]) -> Union[list[Inscription], None]:
+        try:
+            async with self.engine.acquire() as conn:
+                query = self.inscription.select().where(self.inscription.c.inscription_id.in_(inscription_ids))
+                result = await conn.execute(query)
+                records = await result.fetchall()
+                if records is None:
+                    return None
+                return [Inscription(**record) for record in records]
+        except Exception as e:
+            error = f"Mysql::get_inscription_by_ids: Failed to get inscriptions {e}"
+            logger.exception(error)
+            raise Exception(error)
+
     async def get_inscription_by_id(self, inscription_id: str) -> Union[Inscription, None]:
         try:
             async with self.engine.acquire() as conn:
@@ -241,6 +255,7 @@ class EventIndexer:
             break
 
         logger.info(f"Got {block_height} {len(inscription_transactions)} txs")
+        inscriptions = {inscription.inscription_id: inscription for inscription in await self.get_inscription_by_ids([inscription_tx.inscription_id for inscription_tx in inscription_transactions])}
         tx_queue = Queue()
         for tx in inscription_transactions:
             tx_queue.put_nowait(tx)
@@ -256,11 +271,15 @@ class EventIndexer:
                         continue
                     inscription_id = inscription_transaction.inscription_id
                     # logger.info(f"Will process {block_height} {inscription_id} {inscription_transaction.txid}")
-                    inscription = await self.get_inscription_by_id(inscription_id)
+                    inscription = inscriptions.get(inscription_id)
+                    if not inscription:
+                        inscription = await self.get_inscription_by_id(inscription_id)
                     content_type = (inscription.content_type or '').lower()
                     if not ('text' in content_type or 'json' in content_type):
                         continue
-                    content = await self.get_inscription_content_by_id(inscription_id)
+                    content = inscription.content
+                    if not content:
+                        content = await self.get_inscription_content_by_id(inscription_id)
                     if not content:
                         continue
                     try:
