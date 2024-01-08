@@ -290,7 +290,7 @@ class EventIndexer:
                         if not type(content_json) == dict or not content_json.get("p", "").lower() == "orc-20":
                             continue
                         op = content_json.get("op", "").lower()
-                        if not op:
+                        if not op or (op == 'mint' and not inscription_transaction.genesis_tx):
                             continue
                         logger.info(f"Produce new event on {block_height} {inscription_id} {inscription_transaction.txid}")
                         await self.data_processer.save_event(Event(
