@@ -217,6 +217,7 @@ class Run:
         if backup_block_height:
             start_block_height = backup_block_height + 1
             await self.data_processer.restore_all_table()
+            await self.data_processer.backup_all_table()
         else:
             backup_block_height = start_block_height - 1
             logger.info("loading snapshot ...")
