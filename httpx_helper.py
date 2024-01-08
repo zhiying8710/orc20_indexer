@@ -22,7 +22,7 @@ async def get(url, callback, retry=0, slp=3, **kwargs):
                 if ret is not None:
                     return ret
         except Exception as e:
-            logger.error(f"请求url: [{url}]报错", exc_info=e)
+            logger.exception(f"请求url: [{url}]报错")
             if retry > 0 and slp:
                 await asyncio.sleep(slp)
         finally:
@@ -47,7 +47,7 @@ async def post(url, callback, data=None, content=None, retry=0, **kwargs):
                     return ret
         except Exception as e:
             if not silent:
-                logger.error(f"请求url: [{url}]报错", exc_info=e)
+                logger.exception(f"请求url: [{url}]报错")
         finally:
             retry -= 1
 

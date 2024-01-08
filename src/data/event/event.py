@@ -93,7 +93,7 @@ class EventIndexer:
             await self.engine.wait_closed()
         except Exception as e:
             error = f"Mysql::close: Failed close database connection {e}"
-            logger.error(error, exc_info=e)
+            logger.exception(error)
             raise Exception(error)
 
     async def is_block_all_inscription_transactions_handled(self, block_height: int) -> bool:
@@ -119,7 +119,7 @@ class EventIndexer:
                 return unhandled == 0 and handled > 0
         except Exception as e:
             error = f"Mysql::is_block_all_inscription_transactions_handled: Failed to detect block txs are all handled or not {e}"
-            logger.error(error, exc_info=e)
+            logger.exception(error)
             raise Exception(error)
 
     async def get_block_inscription_transactions(self, block_height: int) -> Union[list[Inscription_Transaction], None]:
@@ -143,7 +143,7 @@ class EventIndexer:
                 return ret_tx_records
         except Exception as e:
             error = f"Mysql::get_block_inscription_transactions: Failed to get block inscription transactions {e}"
-            logger.error(error, exc_info=e)
+            logger.exception(error)
             raise Exception(error)
 
     async def get_inscription_content_by_id(self, inscription_id: str):
@@ -160,7 +160,7 @@ class EventIndexer:
                 return Inscription(**record)
         except Exception as e:
             error = f"Mysql::get_inscription_by_id: Failed to get inscription {e}"
-            logger.error(error, exc_info=e)
+            logger.exception(error)
             raise Exception(error)
 
     async def get_inscription_transaction_by_id(self, inscription_id: str, txid: str) -> Union[Inscription_Transaction, None]:
@@ -181,7 +181,7 @@ class EventIndexer:
                 return Inscription_Transaction(**tx_record)
         except Exception as e:
             error = f"Mysql::get_inscription_transaction_by_id: Failed to get inscription transaction {e}"
-            logger.error(error, exc_info=e)
+            logger.exception(error)
             raise Exception(error)
 
     async def get_inscription_transactions_by_txid(self, txid: str) -> Union[list[Inscription_Transaction], None]:
@@ -202,7 +202,7 @@ class EventIndexer:
                 return ret_tx_records
         except Exception as e:
             error = f"Mysql::get_block_inscription_transactions: Failed to get block inscription transactions {e}"
-            logger.error(error, exc_info=e)
+            logger.exception(error)
             raise Exception(error)
 
     async def get_block(self, block_height):
@@ -238,6 +238,7 @@ class EventIndexer:
                 logger.info(f"Waiting for {block_height} all txs to be handled")
                 continue
 
+        logger.info(f"Got {block_height} {len(inscription_transactions)} txs")
         tx_queue = Queue()
         for tx in inscription_transactions:
             tx_queue.put_nowait(tx)
@@ -323,13 +324,13 @@ class EventIndexer:
                         try:
                             await self.process_tx(current_block)
                         except Exception as e:
-                            logger.error("Process txs error, retry", exc_info=e)
+                            logger.exception("Process txs error, retry")
 
                     current_block_height += 1
 
             self.running = False
         except Exception as e:
-            logger.error("Event indexer running into error", exc_info=e)
+            logger.exception("Event indexer running into error")
             raise e
         finally:
             await self.close()

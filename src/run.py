@@ -159,7 +159,7 @@ class Run:
 
         except Exception as e:
             error = f"Failed to handle block: {block_height}, {e}"
-            logger.error(error, exc_info=e)
+            logger.exception(error)
             await send_alert(error)
             self.stop_flag = True
 
@@ -198,7 +198,7 @@ class Run:
 
         except Exception as e:
             error = f"Failed to reprocess block: {block_height}, {e}"
-            logger.error(error, exc_info=e)
+            logger.exception(error)
             await send_alert(error)
             self.stop_flag = True
 
