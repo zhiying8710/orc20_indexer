@@ -16,7 +16,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.
 
 from src.data.event import InscriptionTransactionParser, InscriptionTransactionParseResult
 from util import random_string
-from src import bitcoin_cli, electrs_cli
+from src import bitcoin_cli, electrs_cli, ord_cli
 from src.data.processer.interface import Interface
 
 
@@ -76,14 +76,53 @@ class EventIndexer:
             port=env.int("MYSQL_PORT")
         )
 
+    @staticmethod
+    def get_block_index_range(block_height: int):
+        return int(str(block_height) + "0000"), int(str(block_height) + "9999")
+
+    @staticmethod
+    def get_block_index(block: dict, txid: str):
+        txids = block['tx']
+        idx = txids.find(txid)
+        height = block['height']
+        sidx = str(idx)
+        return int(str(height) + '0' * (4 - len(sidx)) + sidx)
+
     async def close(self):
         try:
             self.engine.close()
             await self.engine.wait_closed()
         except Exception as e:
             error = f"Mysql::close: Failed close database connection {e}"
-            logger.error(exc_info=error)
+            logger.error(error, exc_info=e)
             raise Exception(error)
+
+    async def get_block_inscription_transactions(self, block_height: int) -> Union[list[Inscription_Transaction], None]:
+        try:
+            async with self.engine.acquire() as conn:
+                min_block_index, max_block_index = self.get_block_index_range(block_height)
+                query = self.inscription_transaction.select().where(
+                    self.inscription_transaction.c.block_index >= min_block_index
+                ).where(
+                    self.inscription_transaction.c.block_index <= max_block_index
+                )
+                result = await conn.execute(query)
+                tx_records = await result.fetchall()
+                if tx_records is None:
+                    return None
+
+                ret_tx_records = [
+                    Inscription_Transaction(**tx_record) for tx_record in tx_records
+                ]
+
+                return ret_tx_records
+        except Exception as e:
+            error = f"Mysql::get_block_inscription_transactions: Failed to get block inscription transactions {e}"
+            logger.error(error, exc_info=e)
+            raise Exception(error)
+
+    async def get_inscription_content_by_id(self, inscription_id: str):
+        return await ord_cli.get_inscription_content(inscription_id).decode('utf-8')
 
     async def get_inscription_by_id(self, inscription_id: str) -> Union[Inscription, None]:
         try:
@@ -96,7 +135,7 @@ class EventIndexer:
                 return Inscription(**record)
         except Exception as e:
             error = f"Mysql::get_inscription_by_id: Failed to get inscription {e}"
-            logger.error(exc_info=error)
+            logger.error(error, exc_info=e)
             raise Exception(error)
 
     async def get_inscription_transaction_by_id(self, inscription_id: str, txid: str) -> Union[Inscription_Transaction, None]:
@@ -117,7 +156,7 @@ class EventIndexer:
                 return Inscription_Transaction(**tx_record)
         except Exception as e:
             error = f"Mysql::get_inscription_transaction_by_id: Failed to get inscription transaction {e}"
-            logger.error(exc_info=error)
+            logger.error(error, exc_info=e)
             raise Exception(error)
 
     async def get_inscription_transactions_by_txid(self, txid: str) -> Union[list[Inscription_Transaction], None]:
@@ -138,7 +177,7 @@ class EventIndexer:
                 return ret_tx_records
         except Exception as e:
             error = f"Mysql::get_block_inscription_transactions: Failed to get block inscription transactions {e}"
-            logger.error(exc_info=error)
+            logger.error(error, exc_info=e)
             raise Exception(error)
 
     async def get_block(self, block_height):
@@ -152,135 +191,59 @@ class EventIndexer:
             self.blocks.pop(block_height)
         return not cached_prev_block['hash'] == block['previousblockhash']
 
-    async def get_latest_block_height(self):
-        return await self.data_processer.get_min_unhandled_block_height()
-
     async def stop(self):
         logger.warning("Waiting event indexer stop...")
         self.stopped = True
         while self.running:
             await asyncio.sleep(1)
 
-    async def process_tx(self, block, txid_queue):
+    async def process_tx(self, block):
         block_height = block['height']
         block_time = block['time']
+
+        inscription_transactions = await self.get_block_inscription_transactions(block_height)
+        tx_queue = Queue()
+        for tx in inscription_transactions:
+            tx_queue.put_nowait(tx)
 
         async def _process():
             while not self.stopped:
                 try:
-                    idx, txid = txid_queue.get_nowait()
+                    inscription_transaction = tx_queue.get_nowait()
                 except Empty:
                     break
                 else:
-                    tx_detail = await electrs_cli.get_tx(txid)
-                    tx_status = tx_detail['status']
-                    if not tx_status['confirmed']:
-                        break
-                    tx_witness = tx_detail['vin'][0]['witness']
-                    if InscriptionTransactionParser.has_inscription(tx_witness):
-                        logger.info(f"Handle tx {txid}")
-                        inscription_txs = None
-                        while not self.stopped:
-                            logger.info(f"Get tx {txid} inscription transactions")
-                            inscription_txs = await self.get_inscription_transactions_by_txid(txid)
-                            if inscription_txs and not [inscription_tx for inscription_tx in inscription_txs if not inscription_tx.handled]:
-                                break
-                            await asyncio.sleep(1)
-                        if not inscription_txs:
-                            continue
-                        for inscription_tx in inscription_txs:
-                            if inscription_tx.genesis_tx:
-                                logger.info(f"Parse tx {txid} as genesis inscription transactions")
-                                result = InscriptionTransactionParser().parse_inscription(tx_witness)
-                                if not result:
-                                    inscription = await self.get_inscription_by_id(inscription_tx.inscription_id)
-                                    if not inscription:
-                                        continue
-                                    result = InscriptionTransactionParseResult(None, inscription.content)
-                                content = result.content
-                                if not content:
-                                    continue
-                                try:
-                                    content_json = json.loads(content)
-                                except:
-                                    continue
-                                else:
-                                    if not content_json.get("p", "").lower() == "orc-20":
-                                        continue
-                                    op = content_json.get("op", "").lower()
-                                    if not op:
-                                        continue
-                                    await self.data_processer.save_event(Event(
-                                        id=random_string(16),
-                                        event_type="INSCRIBE",
-                                        block_height=block_height,
-                                        block_index=int(str(block_height) + ("0" * (4 - len(str(idx)))) + str(idx) + str(10000 + int(inscription_tx.location.split(':')[1]))),
-                                        timestamp=block_time,
-                                        inscription_id=inscription_tx.inscription_id,
-                                        inscription_number=inscription_tx.inscription_number,
-                                        sender=inscription_tx.current_owner,
-                                        receiver=inscription_tx.current_owner,
-                                        content=content_json,
-                                        operation=op,
-                                    ))
+                    inscription_id = inscription_transaction.inscription_id
+                    inscription = await self.get_inscription_by_id(inscription_id)
+                    content_type = (inscription.content_type or '').lower()
+                    if not ('text' in content_type or 'json' in content_type):
                         continue
-
-
-                    vins = tx_detail['vin']
-                    vouts = tx_detail['vout']
-                    for vin_idx, vin in enumerate(vins):
-                        if self.stopped:
-                            break
-                        prev_txid = vin['txid']
-                        prev_inscription_txs = await self.get_inscription_transactions_by_txid(prev_txid)
-                        if not prev_inscription_txs:
+                    content = await self.get_inscription_content_by_id(inscription_id)
+                    if not content:
+                        continue
+                    try:
+                        content_json = json.loads(content)
+                    except:
+                        continue
+                    else:
+                        if not content_json.get("p", "").lower() == "orc-20":
                             continue
-                        logger.info(f"Handle prev tx {txid}")
-                        for prev_inscription_tx in prev_inscription_txs:
-                            if self.stopped:
-                                break
-                            if prev_inscription_tx.inscription_number < 0:
-                                continue
-                            inscription_id = prev_inscription_tx.inscription_id
-                            inscription_tx = None
-                            while not self.stopped:
-                                logger.info(f"Get inscription {inscription_id} tx {txid} inscription transactions")
-                                inscription_tx = await self.get_inscription_transaction_by_id(inscription_id, txid)
-                                print(inscription_tx.__dict__)
-                                if inscription_tx and inscription_tx.handled:
-                                    break
-                                await asyncio.sleep(1)
-                            if not inscription_tx:
-                                continue
-                            if inscription_tx.inscription_number < 0:
-                                continue
-                            inscription = await self.get_inscription_by_id(inscription_id)
-                            content = inscription.content
-                            if not content:
-                                continue
-                            try:
-                                content_json = json.loads(content)
-                            except:
-                                continue
-                            else:
-                                if not content_json.get("p", "").lower() == "orc-20":
-                                    continue
-                                op = content_json.get("op", "").lower()
-                                if not op:
-                                    continue
-                                await self.data_processer.save_event(Event(
-                                    id=random_string(16),
-                                    event_type="TRANSFER",
-                                    block_height=block_height,
-                                    block_index=int(str(block_height) + ("0" * (4 - len(str(idx)))) + str(idx) + str(10000 + int(inscription_tx.location.split(':')[1]))),
-                                    timestamp=block_time,
-                                    inscription_id=inscription_id,
-                                    inscription_number=prev_inscription_tx.inscription_number,
-                                    sender=prev_inscription_tx.current_owner,
-                                    receiver=vouts[vin_idx].get('scriptpubkey_address'),
-                                    content=content_json,
-                                    operation=op,
-                                ))
+                        op = content_json.get("op", "").lower()
+                        if not op:
+                            continue
+                    await self.data_processer.save_event(Event(
+                        id=random_string(16),
+                        event_type="INSCRIBE" if inscription_transaction.genesis_tx else "TRANSFER",
+                        block_height=block_height,
+                        block_index=int(str(inscription_transaction.block_index) + str(10000 + int(inscription_transaction.location.split(':')[1]))),
+                        timestamp=block_time,
+                        inscription_id=inscription_id,
+                        inscription_number=inscription.inscription_number,
+                        sender=inscription_transaction.current_owner if inscription_transaction.genesis_tx else inscription_transaction.prev_owner,
+                        receiver=inscription_transaction.current_owner,
+                        content=content_json,
+                        operation=op,
+                    ))
 
         done, _ = await asyncio.wait([
             asyncio.create_task(_process()) for _ in range(10)
@@ -313,12 +276,15 @@ class EventIndexer:
                     current_block = await self.get_block(current_block_height)
                     logger.info(f"Got block {current_block_height}")
                     self.blocks[current_block_height] = current_block
-                    await self.data_processer.delete_event_by_block(current_block_height)
-                    logger.info(f"Clear {current_block_height} events")
-                    txid_queue = Queue()
-                    for idx, txid in enumerate(current_block['tx']):
-                        txid_queue.put_nowait((idx, txid))
-                    await self.process_tx(current_block, txid_queue)
+
+                    while not self.stopped:
+                        await self.data_processer.delete_event_by_block(current_block_height)
+                        logger.info(f"Clear {current_block_height} events")
+                        try:
+                            await self.process_tx(current_block)
+                        except Exception as e:
+                            logger.error("Process txs error, retry", exc_info=e)
+
                     current_block_height += 1
 
             self.running = False

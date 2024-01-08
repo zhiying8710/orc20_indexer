@@ -1,5 +1,7 @@
 import random
 import string
+import urllib.parse
+from typing import Union
 
 import aiohttp
 from environs import Env
@@ -13,7 +15,11 @@ async def _ret_response(response):
     return response
 
 
-async def _request(_path, data, method='get', response_callback=None):
+async def _ret_raw(response):
+    return await response.content.read()
+
+
+async def _request(_path, data: Union[dict, None], method='get', response_callback=None):
     async with aiohttp.ClientSession() as session:
         if method == 'post':
             async with session.post(f'{ord_endpoint}{_path}', json=data, headers={
@@ -23,7 +29,12 @@ async def _request(_path, data, method='get', response_callback=None):
                     return await response_callback(response)
                 return await response.json()
         else:
-            async with session.get(f'{ord_endpoint}{_path}?{data}', headers={
+            url = f'{ord_endpoint}{_path}?{data}'
+            if data:
+                url += '?'
+                for key in data:
+                    url = f'{key}={urllib.parse.quote(data[key])}'
+            async with session.get(url, headers={
                 'accept': 'application/json'
             }) as response:
                 if response_callback:
@@ -32,8 +43,10 @@ async def _request(_path, data, method='get', response_callback=None):
 
 
 async def get_block(block: int):
-    await _request(f'/block/{block}', response_callback=_ret_response)
+    return await _request(f'/block/{block}', None, response_callback=_ret_response)
 
 
+def get_inscription_content(inscription_id):
+    return await _request(f'/content/{inscription_id}', None, response_callback=_ret_raw)
 
 

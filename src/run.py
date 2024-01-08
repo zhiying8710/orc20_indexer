@@ -159,7 +159,7 @@ class Run:
 
         except Exception as e:
             error = f"Failed to handle block: {block_height}, {e}"
-            logger.error(exc_info=error)
+            logger.error(error, exc_info=e)
             await send_alert(error)
             self.stop_flag = True
 
@@ -198,7 +198,7 @@ class Run:
 
         except Exception as e:
             error = f"Failed to reprocess block: {block_height}, {e}"
-            logger.error(exc_info=error)
+            logger.error(error, exc_info=e)
             await send_alert(error)
             self.stop_flag = True
 
@@ -230,7 +230,7 @@ class Run:
         await self.restart_event_indexer(start_block_height)
 
         while not self.stop_flag:
-            latest_block_height = await self.event_indexer.get_latest_block_height()
+            latest_block_height = await self.data_processer.get_min_unhandled_block_height()
             if latest_block_height is None:
                 await self.handle_block(self.mempool_block_height, True)
                 logger.debug(f"Waiting for new block ...")
