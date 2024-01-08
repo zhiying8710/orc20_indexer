@@ -257,7 +257,6 @@ class EventIndexer:
             break
 
         logger.info(f"Got {block_height} {len(inscription_transactions)} txs")
-        inscriptions = {inscription.inscription_id: inscription for inscription in await self.get_inscription_by_ids([inscription_tx.inscription_id for inscription_tx in inscription_transactions])}
         tx_queue = Queue()
         for tx in inscription_transactions:
             tx_queue.put_nowait(tx)
@@ -274,9 +273,7 @@ class EventIndexer:
                         continue
                     inscription_id = inscription_transaction.inscription_id
                     # logger.info(f"Will process {block_height} {inscription_id} {inscription_transaction.txid}")
-                    inscription = inscriptions.get(inscription_id)
-                    if not inscription:
-                        inscription = await self.get_inscription_by_id(inscription_id)
+                    inscription = await self.get_inscription_by_id(inscription_id)
                     content_type = (inscription.content_type or '').lower()
                     if not ('text' in content_type or 'json' in content_type):
                         continue
@@ -312,7 +309,7 @@ class EventIndexer:
                         ))
 
         done, _ = await asyncio.wait([
-            asyncio.create_task(_process()) for _ in range(10)
+            asyncio.create_task(_process()) for _ in range(50)
         ])
         for fut in done:
             ex = fut.exception()
