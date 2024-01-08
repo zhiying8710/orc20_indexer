@@ -48,7 +48,7 @@ class Run:
         self.default_sleep_seconds = 10
 
         self.event_indexer = None
-        self.normal_stop_mark = '.stop_mark.lock'
+        self.normal_stop_mark = os.path.join(os.path.dirname(__file__), '.stop_mark.lock')
 
     def set_signal(self):
         """
