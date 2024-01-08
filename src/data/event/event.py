@@ -147,7 +147,7 @@ class EventIndexer:
             raise Exception(error)
 
     async def get_inscription_content_by_id(self, inscription_id: str):
-        return await ord_cli.get_inscription_content(inscription_id).decode('utf-8')
+        return (await ord_cli.get_inscription_content(inscription_id)).decode('utf-8')
 
     async def get_inscription_by_id(self, inscription_id: str) -> Union[Inscription, None]:
         try:
