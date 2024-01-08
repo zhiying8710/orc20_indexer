@@ -1,7 +1,6 @@
-
-import aiohttp
 from environs import Env
 
+import httpx_helper
 from util import random_string
 
 env = Env()
@@ -18,12 +17,9 @@ async def _request(method, params, ret_plain=False):
     }
     if params is not None:
         data['params'] = params
-    async with aiohttp.ClientSession() as session:
-        async with session.post(bitcoind_endpoint, json=data, auth=aiohttp.BasicAuth(bitcoind_username, bitcoind_password)) as response:
-            data = await response.json()
-            if not ret_plain:
-                data = data.get('result')
-            return data
+    return await httpx_helper.post(bitcoind_endpoint, lambda x: x.json().get('result') if not ret_plain else x.json(),
+                                   data, retry=2,
+                                   auth=(bitcoind_username, bitcoind_password))
 
 
 async def get_tx_detail(txid):

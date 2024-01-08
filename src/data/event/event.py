@@ -250,6 +250,7 @@ class EventIndexer:
                     break
                 else:
                     inscription_id = inscription_transaction.inscription_id
+                    logger.info(f"Will process {block_height} {inscription_id} {inscription_transaction.txid}")
                     inscription = await self.get_inscription_by_id(inscription_id)
                     content_type = (inscription.content_type or '').lower()
                     if not ('text' in content_type or 'json' in content_type):
@@ -267,11 +268,12 @@ class EventIndexer:
                         op = content_json.get("op", "").lower()
                         if not op:
                             continue
+                    logger.info(f"Produce new event on {block_height} {inscription_id} {inscription_transaction.txid}")
                     await self.data_processer.save_event(Event(
                         id=random_string(16),
                         event_type="INSCRIBE" if inscription_transaction.genesis_tx else "TRANSFER",
                         block_height=block_height,
-                        block_index=int(str(inscription_transaction.block_index) + str(10000 + int(inscription_transaction.location.split(':')[1]))),
+                        block_index=inscription_transaction.block_index,
                         timestamp=block_time,
                         inscription_id=inscription_id,
                         inscription_number=inscription.inscription_number,
