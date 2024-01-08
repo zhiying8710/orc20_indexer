@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from aiomysql.sa import create_engine
 from environs import Env
 from loguru import logger
-from sqlalchemy import func, select
+from sqlalchemy import func, select, bindparam
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
 
@@ -154,8 +154,8 @@ class EventIndexer:
             return []
         try:
             async with self.engine.acquire() as conn:
-                query = self.inscription.select().where(self.inscription.c.inscription_id.in_(inscription_ids))
-                result = await conn.execute(query, params={'inscription_id_1': inscription_ids})
+                query = self.inscription.select().where(self.inscription.c.inscription_id.in_(bindparam('inscription_ids', expanding=True)))
+                result = await conn.execute(query, params={'inscription_ids': inscription_ids})
                 records = await result.fetchall()
                 if records is None:
                     return None
