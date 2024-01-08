@@ -154,7 +154,7 @@ class EventIndexer:
             return []
         try:
             async with self.engine.acquire() as conn:
-                query = text("SELECT * FROM inscription WHERE inscription_id IN :inscription_ids")
+                query = text("SELECT id, inscription_id, inscription_number, owner, content_type, content, `timestamp`, genesis_height, location FROM inscription WHERE inscription_id IN :inscription_ids")
                 result = await conn.execute(query, {"inscription_ids": inscription_ids})
                 records = await result.fetchall()
                 if records is None:
