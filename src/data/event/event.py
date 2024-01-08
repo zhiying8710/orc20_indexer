@@ -239,6 +239,8 @@ class EventIndexer:
             await asyncio.sleep(1)
 
     async def process_tx(self, block):
+        if len(block['tx']) == 1:
+            return
         block_height = block['height']
         block_time = block['time']
 
