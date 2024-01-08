@@ -230,7 +230,10 @@ class Pgsql(Interface):
                 await conn.execute(f'DROP TABLE IF EXISTS "{origin_table_name}_backup" CASCADE')
                 await conn.execute(f'CREATE TABLE "{origin_table_name}_backup" AS SELECT * FROM {origin_table_name};')
                 for index in index_list:
-                    await conn.execute(CreateIndex(index, if_not_exists=True))
+                    try:
+                        await conn.execute(CreateIndex(index, if_not_exists=True))
+                    except:
+                        pass
         except Exception as e:
             error = f"Pgsql::create_table: Failed to backup table {e}"
             logger.error(error)
