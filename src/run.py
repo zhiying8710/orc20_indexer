@@ -48,6 +48,7 @@ class Run:
         self.default_sleep_seconds = 10
 
         self.event_indexer = None
+        self.normal_stop_mark = '.stop_mark.lock'
 
     def set_signal(self):
         """
@@ -215,14 +216,19 @@ class Run:
         start_block_height = self.start_block_height
         backup_block_height = await self.data_processer.get_backup_block_height()
         if backup_block_height:
-            start_block_height = backup_block_height + 1
-            await self.data_processer.restore_all_table()
-            await self.data_processer.backup_all_table()
+            if not os.path.exists(self.normal_stop_mark):
+                start_block_height = backup_block_height + 1
+                await self.data_processer.restore_all_table()
+                await self.data_processer.backup_all_table()
+            else:
+                start_block_height = await self.data_processer.get_max_event_block() + 1
         else:
             backup_block_height = start_block_height - 1
             logger.info("loading snapshot ...")
             await self.load_snapshot()
             logger.info("snapshot loaded")
+
+        os.remove(self.normal_stop_mark)
 
         await self.restart_event_indexer(start_block_height)
 
@@ -252,6 +258,8 @@ class Run:
                 logger.info(f"Backup on block {latest_block_height}")
 
         await self.event_indexer.stop()
+        with open(self.normal_stop_mark, 'w', encoding='utf-8') as f:
+            f.write("1")
         logger.info("Stopped")
 
     async def main(self):

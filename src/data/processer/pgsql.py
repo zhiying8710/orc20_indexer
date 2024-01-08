@@ -229,11 +229,11 @@ class Pgsql(Interface):
             async with self.engine.acquire() as conn:
                 await conn.execute(f'DROP TABLE IF EXISTS "{origin_table_name}_backup" CASCADE')
                 await conn.execute(f'CREATE TABLE "{origin_table_name}_backup" AS SELECT * FROM {origin_table_name};')
-                for index in index_list:
-                    try:
-                        await conn.execute(CreateIndex(index, if_not_exists=True))
-                    except:
-                        pass
+                # for index in index_list:
+                #     try:
+                #         await conn.execute(CreateIndex(index, if_not_exists=True))
+                #     except:
+                #         pass
         except Exception as e:
             error = f"Pgsql::create_table: Failed to backup table {e}"
             logger.error(error)
@@ -607,6 +607,20 @@ class Pgsql(Interface):
                 await conn.execute(update)
         except Exception as e:
             error = f"Pgsql::mark_block_events_as_unhandled: Failed to block height all events to unhandled {e}"
+            logger.error(error)
+            raise Exception(error)
+
+    async def get_max_event_block(self) -> Union[int, None]:
+        try:
+            async with self.engine.acquire() as conn:
+                query = self.event.select().with_only_columns([func.max(self.event.c.block_height).label('block_height')])
+                result = await conn.execute(query)
+                record = await result.fetchone()
+                if not record:
+                    return None
+                return record['block_height']
+        except Exception as e:
+            error = f"Pgsql::get_min_unhandled_block_height: Failed to min unhandled event height {e}"
             logger.error(error)
             raise Exception(error)
 
