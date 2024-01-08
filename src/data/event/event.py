@@ -311,7 +311,7 @@ class EventIndexer:
                         ))
 
         done, _ = await asyncio.wait([
-            asyncio.create_task(_process()) for _ in range(10)
+            asyncio.create_task(_process()) for _ in range(20)
         ])
         for fut in done:
             ex = fut.exception()
