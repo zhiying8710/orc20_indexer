@@ -1,7 +1,6 @@
 import os
 import sys
 import json
-import time
 import signal
 import asyncio
 from environs import Env
@@ -79,7 +78,7 @@ class Run:
         """
         await self.redis_helper.close()
         await self.data_processer.close()
-        time.sleep(3)
+        await asyncio.sleep(3)
 
     async def load_snapshot(self):
         """
@@ -234,7 +233,7 @@ class Run:
             if latest_block_height is None:
                 await self.handle_block(self.mempool_block_height, True)
                 logger.debug(f"Waiting for new block ...")
-                time.sleep(self.default_sleep_seconds)
+                await asyncio.sleep(self.default_sleep_seconds)
                 continue
 
             if await self.event_indexer.detect_reorg(latest_block_height):
