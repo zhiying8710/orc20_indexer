@@ -42,6 +42,7 @@ class Pgsql(Interface):
         )
         self.event_index_list = [
             sa.Index("block_height", self.event.c.block_height),
+            sa.Index("block_index", self.event.c.block_index),
             sa.Index("handled", self.event.c.handled),
         ]
 
@@ -591,3 +592,17 @@ class Pgsql(Interface):
             error = f"Pgsql::get_min_unhandled_block_height: Failed to min unhandled event height {e}"
             logger.error(error)
             raise Exception(error)
+
+    async def mark_block_events_as_unhandled(self, block_height: int):
+        try:
+            async with self.engine.acquire() as conn:
+                update = self.event.update().where(
+                    self.event.c.block_height == block_height
+                ).values(handled=False)
+                await conn.execute(update)
+        except Exception as e:
+            error = f"Pgsql::mark_block_events_as_unhandled: Failed to block height all events to unhandled {e}"
+            logger.error(error)
+            raise Exception(error)
+
+

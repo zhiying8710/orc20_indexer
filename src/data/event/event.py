@@ -10,11 +10,10 @@ import sqlalchemy as sa
 from aiomysql.sa import create_engine
 from environs import Env
 from loguru import logger
-
+from sqlalchemy import func, select
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
 
-from src.data.event import InscriptionTransactionParser, InscriptionTransactionParseResult
 from util import random_string
 from src import bitcoin_cli, electrs_cli, ord_cli
 from src.data.processer.interface import Interface
@@ -94,6 +93,32 @@ class EventIndexer:
             await self.engine.wait_closed()
         except Exception as e:
             error = f"Mysql::close: Failed close database connection {e}"
+            logger.error(error, exc_info=e)
+            raise Exception(error)
+
+    async def is_block_all_inscription_transactions_handled(self, block_height: int) -> bool:
+        try:
+            async with self.engine.acquire() as conn:
+                min_block_index, max_block_index = self.get_block_index_range(block_height)
+                unhandled = await conn.scalar(select([func.count(self.inscription_transaction.c.id)])
+                .where(
+                    self.inscription_transaction.c.block_index >= min_block_index
+                ).where(
+                    self.inscription_transaction.c.block_index <= max_block_index
+                ).where(
+                    self.inscription_transaction.c.handled == False
+                ))
+                handled = await conn.scalar(select([func.count(self.inscription_transaction.c.id)])
+                .where(
+                    self.inscription_transaction.c.block_index >= min_block_index
+                ).where(
+                    self.inscription_transaction.c.block_index <= max_block_index
+                ).where(
+                    self.inscription_transaction.c.handled == True
+                ))
+                return unhandled == 0 and handled > 0
+        except Exception as e:
+            error = f"Mysql::is_block_all_inscription_transactions_handled: Failed to detect block txs are all handled or not {e}"
             logger.error(error, exc_info=e)
             raise Exception(error)
 
@@ -201,7 +226,18 @@ class EventIndexer:
         block_height = block['height']
         block_time = block['time']
 
-        inscription_transactions = await self.get_block_inscription_transactions(block_height)
+        while not self.stopped and await self.is_block_all_inscription_transactions_handled(block_height):
+            logger.info(f"Waiting for {block_height} all txs to be handled")
+            await asyncio.sleep(1)
+            continue
+
+        inscription_transactions = None
+        while not self.stopped:
+            inscription_transactions = await self.get_block_inscription_transactions(block_height)
+            if [1 for inscription_transaction in inscription_transactions if not inscription_transaction.handled]:
+                logger.info(f"Waiting for {block_height} all txs to be handled")
+                continue
+
         tx_queue = Queue()
         for tx in inscription_transactions:
             tx_queue.put_nowait(tx)
@@ -243,6 +279,7 @@ class EventIndexer:
                         receiver=inscription_transaction.current_owner,
                         content=content_json,
                         operation=op,
+                        handled=True
                     ))
 
         done, _ = await asyncio.wait([
@@ -252,6 +289,7 @@ class EventIndexer:
             ex = fut.exception()
             if ex:
                 raise ex
+        await self.data_processer.mark_block_events_as_unhandled(block_height)
 
     async def run(self, init_block_height):
         try:

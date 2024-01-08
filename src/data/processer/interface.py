@@ -173,4 +173,8 @@ class Interface(ABC):
     async def get_backup_block_height(self):
         return None
 
+    @abstractmethod
+    def mark_block_events_as_unhandled(self, block_height):
+        pass
+
 
