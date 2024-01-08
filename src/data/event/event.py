@@ -268,26 +268,26 @@ class EventIndexer:
                     except:
                         continue
                     else:
-                        if not content_json.get("p", "").lower() == "orc-20":
+                        if not type(content_json) == dict or not content_json.get("p", "").lower() == "orc-20":
                             continue
                         op = content_json.get("op", "").lower()
                         if not op:
                             continue
-                    logger.info(f"Produce new event on {block_height} {inscription_id} {inscription_transaction.txid}")
-                    await self.data_processer.save_event(Event(
-                        id=random_string(16),
-                        event_type="INSCRIBE" if inscription_transaction.genesis_tx else "TRANSFER",
-                        block_height=block_height,
-                        block_index=inscription_transaction.block_index,
-                        timestamp=block_time,
-                        inscription_id=inscription_id,
-                        inscription_number=inscription.inscription_number,
-                        sender=inscription_transaction.current_owner if inscription_transaction.genesis_tx else inscription_transaction.prev_owner,
-                        receiver=inscription_transaction.current_owner,
-                        content=content_json,
-                        operation=op,
-                        handled=True
-                    ))
+                        logger.info(f"Produce new event on {block_height} {inscription_id} {inscription_transaction.txid}")
+                        await self.data_processer.save_event(Event(
+                            id=random_string(16),
+                            event_type="INSCRIBE" if inscription_transaction.genesis_tx else "TRANSFER",
+                            block_height=block_height,
+                            block_index=inscription_transaction.block_index,
+                            timestamp=block_time,
+                            inscription_id=inscription_id,
+                            inscription_number=inscription.inscription_number,
+                            sender=inscription_transaction.current_owner if inscription_transaction.genesis_tx else inscription_transaction.prev_owner,
+                            receiver=inscription_transaction.current_owner,
+                            content=content_json,
+                            operation=op,
+                            handled=True
+                        ))
 
         done, _ = await asyncio.wait([
             asyncio.create_task(_process()) for _ in range(10)
