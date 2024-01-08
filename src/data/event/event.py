@@ -154,7 +154,7 @@ class EventIndexer:
             return []
         try:
             async with self.engine.acquire() as conn:
-                query = self.inscription.select().where(self.inscription.c.inscription_id.in_(tuple(inscription_ids)))
+                query = self.inscription.select().where(self.inscription.c.inscription_id.in_(inscription_ids).clause())
                 result = await conn.execute(query)
                 records = await result.fetchall()
                 if records is None:
