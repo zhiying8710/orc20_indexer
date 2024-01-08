@@ -266,6 +266,7 @@ class EventIndexer:
             while not self.stopped:
                 try:
                     inscription_transaction = tx_queue.get_nowait()
+                    logger.debug(f'Process {block_height} tx, queue left {tx_queue.qsize()}')
                 except Empty:
                     break
                 else:
@@ -311,7 +312,7 @@ class EventIndexer:
                         ))
 
         done, _ = await asyncio.wait([
-            asyncio.create_task(_process()) for _ in range(20)
+            asyncio.create_task(_process()) for _ in range(10)
         ])
         for fut in done:
             ex = fut.exception()
