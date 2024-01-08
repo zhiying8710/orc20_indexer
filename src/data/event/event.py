@@ -265,7 +265,7 @@ class EventIndexer:
             while not self.stopped:
                 try:
                     inscription_transaction = tx_queue.get_nowait()
-                    logger.debug(f'Process {block_height} tx, queue left {tx_queue.qsize()}')
+                    # logger.debug(f'Process {block_height} tx, queue left {tx_queue.qsize()}')
                 except Empty:
                     break
                 else:
