@@ -212,8 +212,6 @@ class EventIndexer:
     async def detect_reorg(self, block_height):
         cached_prev_block = self.blocks[block_height - 1]
         block = await self.get_block(block_height)
-        if block_height in self.blocks:
-            self.blocks.pop(block_height)
         return not cached_prev_block['hash'] == block['previousblockhash']
 
     async def stop(self):
@@ -297,6 +295,7 @@ class EventIndexer:
             if ex:
                 raise ex
         await self.data_processer.mark_block_events_as_unhandled(block_height)
+        logger.info(f'Mark {block_height} events to unhandled')
 
     async def run(self, init_block_height):
         try:
@@ -308,7 +307,7 @@ class EventIndexer:
             current_block_height = init_block_height
             while not self.stopped:
                 for block_height in list(self.blocks.keys()):
-                    if block_height >= current_block_height:
+                    if block_height > current_block_height or block_height < current_block_height - 12:
                         self.blocks.pop(block_height)
 
                 if not self.stopped and not await bitcoin_cli.get_block_hash(current_block_height):
