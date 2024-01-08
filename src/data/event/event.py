@@ -252,8 +252,10 @@ class EventIndexer:
                 except Empty:
                     break
                 else:
+                    if inscription_transaction.inscription_number < 0:
+                        continue
                     inscription_id = inscription_transaction.inscription_id
-                    logger.info(f"Will process {block_height} {inscription_id} {inscription_transaction.txid}")
+                    # logger.info(f"Will process {block_height} {inscription_id} {inscription_transaction.txid}")
                     inscription = await self.get_inscription_by_id(inscription_id)
                     content_type = (inscription.content_type or '').lower()
                     if not ('text' in content_type or 'json' in content_type):
