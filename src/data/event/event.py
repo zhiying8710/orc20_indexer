@@ -236,7 +236,9 @@ class EventIndexer:
             inscription_transactions = await self.get_block_inscription_transactions(block_height)
             if [1 for inscription_transaction in inscription_transactions if not inscription_transaction.handled]:
                 logger.info(f"Waiting for {block_height} all txs to be handled")
+                await asyncio.sleep(1)
                 continue
+            break
 
         logger.info(f"Got {block_height} {len(inscription_transactions)} txs")
         tx_queue = Queue()
