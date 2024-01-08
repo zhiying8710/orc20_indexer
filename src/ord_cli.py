@@ -16,10 +16,10 @@ async def _ret_raw(response):
 
 
 async def get_block(block: int):
-    return await httpx_helper.get(f'/block/{block}', lambda x: x.json())
+    return await httpx_helper.get(f'{ord_endpoint}/block/{block}', lambda x: x.json())
 
 
 async def get_inscription_content(inscription_id):
-    return await httpx_helper.get(f'/content/{inscription_id}', lambda x: x.content)
+    return await httpx_helper.get(f'{ord_endpoint}/content/{inscription_id}', lambda x: x.content)
 
 

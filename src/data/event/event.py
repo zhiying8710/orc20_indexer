@@ -327,6 +327,7 @@ class EventIndexer:
                             await self.process_tx(current_block)
                         except Exception as e:
                             logger.exception("Process txs error, retry")
+                            await asyncio.sleep(5)
 
                     current_block_height += 1
 
