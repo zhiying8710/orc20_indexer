@@ -46,7 +46,7 @@ async def get_block(block: int):
     return await _request(f'/block/{block}', None, response_callback=_ret_response)
 
 
-def get_inscription_content(inscription_id):
+async def get_inscription_content(inscription_id):
     return await _request(f'/content/{inscription_id}', None, response_callback=_ret_raw)
 
 
