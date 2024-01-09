@@ -160,7 +160,7 @@ class EventIndexer:
     async def get_inscription_content_by_id(self, inscription_id: str):
         try:
             content = (await ord_cli.get_inscription_content(inscription_id)).decode('utf-8')
-            if not content:
+            if content is None:
                 raise Exception(f'Got {inscription_id} content is None')
             return content
         except UnicodeDecodeError:
