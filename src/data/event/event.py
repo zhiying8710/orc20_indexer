@@ -6,20 +6,21 @@ from queue import Queue, Empty
 from typing import Union, List
 
 import sqlalchemy as sa
-
 from aiomysql.sa import create_engine
 from environs import Env
 from loguru import logger
-from sqlalchemy import func, select, bindparam, text
+from sqlalchemy import func, select, text
+
+from httpx_helper import HttpNotFound
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
 
 from util import random_string
-from src import bitcoin_cli, electrs_cli, ord_cli
+from src import bitcoin_cli, ord_cli
 from src.data.processer.interface import Interface
 
 
-from src.structure import Inscription, Inscription_Transaction, Event
+from src.structure import Inscription, Inscription_Transaction, Event, Brc20_Token_Ledger_Log
 
 
 class EventIndexer:
@@ -56,6 +57,16 @@ class EventIndexer:
             sa.Column("block_height", sa.BIGINT),
             sa.Column("block_index", sa.BIGINT),
             sa.Column("handled", sa.BOOLEAN),
+        )
+
+        self.brc20_token_ledger_log = sa.Table(
+            'brc20_token_ledger_log',
+            metadata,
+            sa.Column("id", sa.BIGINT, primary_key=True, unique=True),
+            sa.Column("inscription_id", sa.String(255)),
+            sa.Column("inscription_number", sa.BIGINT),
+            sa.Column("txid", sa.String(255)),
+            sa.Column("block", sa.BIGINT),
         )
 
         self.engine = None
@@ -147,7 +158,10 @@ class EventIndexer:
             raise Exception(error)
 
     async def get_inscription_content_by_id(self, inscription_id: str):
-        return (await ord_cli.get_inscription_content(inscription_id)).decode('utf-8')
+        try:
+            return (await ord_cli.get_inscription_content(inscription_id)).decode('utf-8')
+        except UnicodeDecodeError:
+            return None
 
     async def get_inscription_by_ids(self, inscription_ids: List[str]) -> Union[list[Inscription], None]:
         if not inscription_ids:
@@ -221,6 +235,30 @@ class EventIndexer:
             logger.exception(error)
             raise Exception(error)
 
+    async def get_block_brc20_ledger_logs(self, block_height: int) -> Union[list[Brc20_Token_Ledger_Log], None]:
+        try:
+            async with self.engine.acquire() as conn:
+                min_block_index, max_block_index = self.get_block_index_range(block_height)
+                query = self.brc20_token_ledger_log.select().where(
+                    self.brc20_token_ledger_log.c.id >= min_block_index
+                ).where(
+                    self.brc20_token_ledger_log.c.id <= max_block_index
+                )
+                result = await conn.execute(query)
+                tx_records = await result.fetchall()
+                if tx_records is None:
+                    return None
+
+                ret_tx_records = [
+                    Brc20_Token_Ledger_Log(**tx_record) for tx_record in tx_records
+                ]
+
+                return ret_tx_records
+        except Exception as e:
+            error = f"Mysql::get_block_brc20_transactions: Failed to get block brc20 transactions {e}"
+            logger.exception(error)
+            raise Exception(error)
+
     async def get_block(self, block_height):
         block_hash = await bitcoin_cli.get_block_hash(block_height)
         return await bitcoin_cli.get_block(block_hash, 1)
@@ -244,6 +282,17 @@ class EventIndexer:
         block_height = block['height']
         block_time = block['time']
 
+        while not self.stopped:
+            try:
+                await ord_cli.get_block(block_height)
+                break
+            except HttpNotFound:
+                logger.warning(f'Ord block {block_height} has not been proceed, wait')
+                await asyncio.sleep(5)
+            except Exception as e:
+                logger.exception(f'Get ord block {block_height} info error')
+                await asyncio.sleep(3)
+
         while not self.stopped and not await self.is_block_all_inscription_transactions_handled(block_height):
             logger.info(f"Waiting for {block_height} all txs to be handled")
             await asyncio.sleep(1)
@@ -257,6 +306,10 @@ class EventIndexer:
                 await asyncio.sleep(1)
                 continue
             break
+
+        m_brc20_ledger_logs = set([f'{brc20_ledger_log.inscription_id}:{brc20_ledger_log.txid}' for brc20_ledger_log in await self.get_block_brc20_ledger_logs(block_height)])
+
+        inscription_transactions = list(filter(lambda x: f'{x.inscription_id}:{x.txid}' not in m_brc20_ledger_logs, inscription_transactions))
 
         logger.info(f"Got {block_height} {len(inscription_transactions)} txs")
         tx_queue = Queue()

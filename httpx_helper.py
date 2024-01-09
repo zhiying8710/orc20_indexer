@@ -6,6 +6,10 @@ from loguru import logger
 _timeout = httpx.Timeout(None, connect=8, read=60)
 
 
+class HttpNotFound(Exception):
+    pass
+
+
 async def get(url, callback, retry=0, slp=3, **kwargs):
     if 'timeout' in kwargs:
         timeout = kwargs.pop('timeout')
@@ -15,6 +19,8 @@ async def get(url, callback, retry=0, slp=3, **kwargs):
         try:
             async with httpx.AsyncClient(verify=False, timeout=timeout, **kwargs) as client:
                 response: httpx.Response = await client.get(url)
+                if response.status_code == 404:
+                    raise HttpNotFound()
                 if asyncio.iscoroutinefunction(callback):
                     ret = await callback(response)
                 else:
