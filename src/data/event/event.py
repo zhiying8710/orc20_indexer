@@ -83,7 +83,8 @@ class EventIndexer:
             password=env.str("MYSQL_PASSWD"),
             db=env.str("MYSQL_DB"),
             host=env.str("MYSQL_HOST"),
-            port=env.int("MYSQL_PORT")
+            port=env.int("MYSQL_PORT"),
+            isolation_level="AUTOCOMMIT"
         )
 
     @staticmethod
