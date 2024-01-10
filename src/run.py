@@ -227,8 +227,8 @@ class Run:
         """
         Main entry point of the indexer.
         """
+        await self.init()
         if self.indexer == 'data':
-            await self.init()
 
             while not self.close_flag:
                 await self.run()
