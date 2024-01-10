@@ -159,10 +159,10 @@ class EventIndexer:
 
     async def get_inscription_content_by_id(self, inscription_id: str):
         try:
-            content = (await ord_cli.get_inscription_content(inscription_id)).decode('utf-8')
+            content = await ord_cli.get_inscription_content(inscription_id)
             if content is None:
                 raise Exception(f'Got {inscription_id} content is None')
-            return content
+            return content.decode('utf-8')
         except UnicodeDecodeError:
             return None
 
@@ -382,7 +382,7 @@ class EventIndexer:
             ex = fut.exception()
             if ex:
                 raise ex
-        logger.info(f"Produced {len(events)} on block {block_height}")
+        logger.info(f"Produced {len(events)} events on block {block_height}")
         if events:
             await self.data_processer.save_events(events)
             await self.data_processer.mark_block_events_as_unhandled(block_height)
