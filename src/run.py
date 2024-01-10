@@ -228,7 +228,8 @@ class Run:
             await self.load_snapshot()
             logger.info("snapshot loaded")
 
-        os.remove(self.normal_stop_mark)
+        if os.path.exists(self.normal_stop_mark):
+            os.remove(self.normal_stop_mark)
 
         await self.restart_event_indexer(start_block_height)
 
