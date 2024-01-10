@@ -273,6 +273,8 @@ class EventIndexer:
     async def detect_reorg(self, block_height):
         if not self.blocks:  # FIXME
             return False
+        if await bitcoin_cli.get_block_count() < block_height:
+            return False
         cached_prev_block = self.blocks[block_height - 1]
         block = await self.get_block(block_height)
         return not cached_prev_block['hash'] == block['previousblockhash']

@@ -4,7 +4,7 @@ import asyncio
 from environs import Env
 from typing import Union, Tuple
 import sqlalchemy as sa
-from sqlalchemy import func
+from sqlalchemy import func, select
 from sqlalchemy.sql.ddl import CreateTable, CreateIndex
 from sqlalchemy.dialects.postgresql import ENUM, JSON, ARRAY
 from sqlalchemy.dialects.postgresql import insert
@@ -651,6 +651,20 @@ class Pgsql(Interface):
                 return record['block_height']
         except Exception as e:
             error = f"Pgsql::get_max_handled_block_height: Failed to max handled event height {e}"
+            logger.error(error)
+            raise Exception(error)
+
+    async def is_block_handled(self, block_height) -> bool:
+        try:
+            async with self.engine.acquire() as conn:
+                return await conn.scalar(select([func.count(self.event.c.id)])
+                .where(
+                    self.event.c.block_height == block_height
+                ).where(
+                    self.event.c.handled == False
+                )) == 0
+        except Exception as e:
+            error = f"Pgsql::is_block_handled: Failed to detect block height is handled or not {e}"
             logger.error(error)
             raise Exception(error)
 

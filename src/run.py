@@ -202,26 +202,42 @@ class Run:
         await self.load_snapshot()
         logger.info("snapshot loaded")
 
-        start_block_height = self.start_block_height
-        prev_proceed_block_height = (await self.data_processer.get_max_handled_block_height()) or (start_block_height - 1)
+        current_block_height = self.start_block_height
 
         while not self.stop_flag:
-            latest_block_height = await self.data_processer.get_min_unhandled_block_height()
-            if latest_block_height is None:
+            max_event_block = await self.data_processer.get_max_event_block()
+            if max_event_block is None or current_block_height - 1 == max_event_block:
                 await self.handle_block(self.mempool_block_height, True)
-                logger.debug(f"Waiting for new block ...")
+                logger.info(f"Waiting for new block events ...")
                 await asyncio.sleep(self.default_sleep_seconds)
                 continue
-
-            if latest_block_height <= prev_proceed_block_height:  # reorg detected
+            if current_block_height > max_event_block:  # reorg detected
+                logger.info(f"Reorg detected, restart from beginning ...")
                 self.stop_flag = True
                 break
 
-            logger.info(f"Handle block {latest_block_height}")
-            if not await self.handle_block(latest_block_height):
-                self.stop_flag = True
+            if current_block_height == max_event_block:
+                if not await self.data_processer.is_block_handled(current_block_height):  # 可以处理了
+                    if not await self.handle_block(current_block_height):
+                        self.stop_flag = True
+                        break
+                    current_block_height = max_event_block + 1
+                continue
+
+            if self.stop_flag:
                 break
-            prev_proceed_block_height = latest_block_height
+
+            start_block = current_block_height
+            for block in range(start_block, max_event_block):
+                current_block_height = block
+                logger.info(f"Handle block {current_block_height}")
+                if not await self.handle_block(current_block_height):
+                    self.stop_flag = True
+                    break
+
+            if self.stop_flag:
+                break
+            current_block_height += 1
 
     async def main(self):
         """
