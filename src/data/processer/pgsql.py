@@ -340,6 +340,21 @@ class Pgsql(Interface):
             logger.error(error)
             raise Exception(error)
 
+    async def save_events(self, events: list[Event]):
+        try:
+            async with self.engine.acquire() as conn:
+                values_list = [vars(event) for event in events]
+                insert_stmt = insert(self.event).values(values_list)
+                on_conflict_stmt = insert_stmt.on_conflict_do_update(
+                    index_elements=["id"], set_={c.name: c for c in insert_stmt.excluded}
+                )
+                await conn.execute(on_conflict_stmt)
+
+        except Exception as e:
+            error = f"Pgsql::save_events: Failed to save events {e}"
+            logger.error(error)
+            raise Exception(error)
+
     async def save_event(self, event: Event):
         try:
             insert_stmt = insert(self.event).values(vars(event))

@@ -20,6 +20,10 @@ class Interface(ABC):
     """
 
     @abstractmethod
+    async def save_events(self, events: list[Event]):
+        pass
+
+    @abstractmethod
     async def save_event(self, event: Event):
         """
         Save an event.

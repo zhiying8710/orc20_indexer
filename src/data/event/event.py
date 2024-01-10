@@ -319,6 +319,8 @@ class EventIndexer:
         for tx in inscription_transactions:
             tx_queue.put_nowait(tx)
 
+        events = []
+
         async def _process():
             while not self.stopped:
                 try:
@@ -333,6 +335,9 @@ class EventIndexer:
                         inscription_id = inscription_transaction.inscription_id
                         # logger.info(f"Will process {block_height} {inscription_id} {inscription_transaction.txid}")
                         inscription = await self.get_inscription_by_id(inscription_id)
+                        if inscription is None:
+                            logger.warning(f'Can not found {inscription_id} in mysql db')
+                            continue
                         content_type = (inscription.content_type or '').lower()
                         if not ('text' in content_type or 'json' in content_type):
                             continue
@@ -352,7 +357,7 @@ class EventIndexer:
                             if not op or (op == 'mint' and not inscription_transaction.genesis_tx):
                                 continue
                             logger.info(f"Produce new event on {block_height} {inscription_id} {inscription_transaction.txid}")
-                            await self.data_processer.save_event(Event(
+                            events.append(Event(
                                 id=random_string(16),
                                 event_type="INSCRIBE" if inscription_transaction.genesis_tx else "TRANSFER",
                                 block_height=block_height,
@@ -377,8 +382,11 @@ class EventIndexer:
             ex = fut.exception()
             if ex:
                 raise ex
-        await self.data_processer.mark_block_events_as_unhandled(block_height)
-        logger.info(f'Mark {block_height} events to unhandled')
+        logger.info(f"Produced {len(events)} on block {block_height}")
+        if events:
+            await self.data_processer.save_events(events)
+            await self.data_processer.mark_block_events_as_unhandled(block_height)
+            logger.info(f'Mark {block_height} events to unhandled')
 
     async def run(self, init_block_height):
         try:
