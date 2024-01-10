@@ -109,8 +109,8 @@ class EventIndexer:
 
     async def is_block_all_inscription_transactions_handled(self, block_height: int) -> bool:
         try:
+            min_block_index, max_block_index = self.get_block_index_range(block_height)
             async with self.engine.acquire() as conn:
-                min_block_index, max_block_index = self.get_block_index_range(block_height)
                 unhandled = await conn.scalar(select([func.count(self.inscription_transaction.c.id)])
                 .where(
                     self.inscription_transaction.c.block_index >= min_block_index
@@ -119,6 +119,7 @@ class EventIndexer:
                 ).where(
                     self.inscription_transaction.c.handled == False
                 ))
+            async with self.engine.acquire() as conn:
                 handled = await conn.scalar(select([func.count(self.inscription_transaction.c.id)])
                 .where(
                     self.inscription_transaction.c.block_index >= min_block_index
@@ -128,7 +129,7 @@ class EventIndexer:
                     self.inscription_transaction.c.handled == True
                 ))
                 logger.info(f"unhandled {unhandled}, handled {handled}")
-                return unhandled == 0 and handled > 0
+            return unhandled == 0 and handled > 0
         except Exception as e:
             error = f"Mysql::is_block_all_inscription_transactions_handled: Failed to detect block txs are all handled or not {e}"
             logger.exception(error)
