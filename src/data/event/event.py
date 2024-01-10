@@ -327,44 +327,48 @@ class EventIndexer:
                 except Empty:
                     break
                 else:
-                    if inscription_transaction.inscription_number < 0:
-                        continue
-                    inscription_id = inscription_transaction.inscription_id
-                    # logger.info(f"Will process {block_height} {inscription_id} {inscription_transaction.txid}")
-                    inscription = await self.get_inscription_by_id(inscription_id)
-                    content_type = (inscription.content_type or '').lower()
-                    if not ('text' in content_type or 'json' in content_type):
-                        continue
-                    content = inscription.content
-                    if not content:
-                        content = await self.get_inscription_content_by_id(inscription_id)
-                    if not content:
-                        continue
                     try:
-                        content_json = json.loads(content)
+                        if inscription_transaction.inscription_number < 0:
+                            continue
+                        inscription_id = inscription_transaction.inscription_id
+                        # logger.info(f"Will process {block_height} {inscription_id} {inscription_transaction.txid}")
+                        inscription = await self.get_inscription_by_id(inscription_id)
+                        content_type = (inscription.content_type or '').lower()
+                        if not ('text' in content_type or 'json' in content_type):
+                            continue
+                        content = inscription.content
+                        if not content:
+                            content = await self.get_inscription_content_by_id(inscription_id)
+                        if not content:
+                            continue
+                        try:
+                            content_json = json.loads(content)
+                        except:
+                            continue
+                        else:
+                            if not type(content_json) == dict or not content_json.get("p", "").lower() == "orc-20":
+                                continue
+                            op = content_json.get("op", "").lower()
+                            if not op or (op == 'mint' and not inscription_transaction.genesis_tx):
+                                continue
+                            logger.info(f"Produce new event on {block_height} {inscription_id} {inscription_transaction.txid}")
+                            await self.data_processer.save_event(Event(
+                                id=random_string(16),
+                                event_type="INSCRIBE" if inscription_transaction.genesis_tx else "TRANSFER",
+                                block_height=block_height,
+                                block_index=inscription_transaction.block_index,
+                                timestamp=block_time,
+                                inscription_id=inscription_id,
+                                inscription_number=inscription.inscription_number,
+                                sender=inscription_transaction.current_owner if inscription_transaction.genesis_tx else inscription_transaction.prev_owner,
+                                receiver=inscription_transaction.current_owner,
+                                content=content_json,
+                                operation=op,
+                                handled=True
+                            ))
                     except:
-                        continue
-                    else:
-                        if not type(content_json) == dict or not content_json.get("p", "").lower() == "orc-20":
-                            continue
-                        op = content_json.get("op", "").lower()
-                        if not op or (op == 'mint' and not inscription_transaction.genesis_tx):
-                            continue
-                        logger.info(f"Produce new event on {block_height} {inscription_id} {inscription_transaction.txid}")
-                        await self.data_processer.save_event(Event(
-                            id=random_string(16),
-                            event_type="INSCRIBE" if inscription_transaction.genesis_tx else "TRANSFER",
-                            block_height=block_height,
-                            block_index=inscription_transaction.block_index,
-                            timestamp=block_time,
-                            inscription_id=inscription_id,
-                            inscription_number=inscription.inscription_number,
-                            sender=inscription_transaction.current_owner if inscription_transaction.genesis_tx else inscription_transaction.prev_owner,
-                            receiver=inscription_transaction.current_owner,
-                            content=content_json,
-                            operation=op,
-                            handled=True
-                        ))
+                        logger.exception(f'Process {inscription_transaction.inscription_id} error')
+                        raise
 
         done, _ = await asyncio.wait([
             asyncio.create_task(_process()) for _ in range(200)
