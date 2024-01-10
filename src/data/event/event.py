@@ -84,7 +84,7 @@ class EventIndexer:
             db=env.str("MYSQL_DB"),
             host=env.str("MYSQL_HOST"),
             port=env.int("MYSQL_PORT"),
-            isolation_level="AUTOCOMMIT"
+            autocommit=True
         )
 
     @staticmethod
@@ -113,6 +113,7 @@ class EventIndexer:
             min_block_index, max_block_index = self.get_block_index_range(block_height)
             async with self.engine.acquire() as conn:
                 unhandled = await conn.scalar(select([func.count(self.inscription_transaction.c.id)])
+                .execution_options(autocommit=True)
                 .where(
                     self.inscription_transaction.c.block_index >= min_block_index
                 ).where(
@@ -122,6 +123,7 @@ class EventIndexer:
                 ))
             async with self.engine.acquire() as conn:
                 handled = await conn.scalar(select([func.count(self.inscription_transaction.c.id)])
+                .execution_options(autocommit=True)
                 .where(
                     self.inscription_transaction.c.block_index >= min_block_index
                 ).where(
@@ -140,7 +142,7 @@ class EventIndexer:
         try:
             async with self.engine.acquire() as conn:
                 min_block_index, max_block_index = self.get_block_index_range(block_height)
-                query = self.inscription_transaction.select().where(
+                query = self.inscription_transaction.select().execution_options(autocommit=True).where(
                     self.inscription_transaction.c.block_index >= min_block_index
                 ).where(
                     self.inscription_transaction.c.block_index <= max_block_index
@@ -174,7 +176,7 @@ class EventIndexer:
             return []
         try:
             async with self.engine.acquire() as conn:
-                query = text("SELECT id, inscription_id, inscription_number, owner, content_type, content, `timestamp`, genesis_height, location FROM inscription WHERE inscription_id IN :inscription_ids")
+                query = text("SELECT id, inscription_id, inscription_number, owner, content_type, content, `timestamp`, genesis_height, location FROM inscription WHERE inscription_id IN :inscription_ids").execution_options(autocommit=True)
                 result = await conn.execute(query, {"inscription_ids": inscription_ids})
                 records = await result.fetchall()
                 if records is None:
@@ -188,7 +190,7 @@ class EventIndexer:
     async def get_inscription_by_id(self, inscription_id: str) -> Union[Inscription, None]:
         try:
             async with self.engine.acquire() as conn:
-                query = self.inscription.select().where(self.inscription.c.inscription_id == inscription_id)
+                query = self.inscription.select().execution_options(autocommit=True).where(self.inscription.c.inscription_id == inscription_id)
                 result = await conn.execute(query)
                 record = await result.fetchone()
                 if record is None:
@@ -202,7 +204,7 @@ class EventIndexer:
     async def get_inscription_transaction_by_id(self, inscription_id: str, txid: str) -> Union[Inscription_Transaction, None]:
         try:
             async with self.engine.acquire() as conn:
-                query = self.inscription_transaction.select().where(
+                query = self.inscription_transaction.select().execution_options(autocommit=True).where(
                     self.inscription_transaction.c.inscription_id == inscription_id
                 ).where(
                     self.inscription_transaction.c.txid == txid
@@ -223,7 +225,7 @@ class EventIndexer:
     async def get_inscription_transactions_by_txid(self, txid: str) -> Union[list[Inscription_Transaction], None]:
         try:
             async with self.engine.acquire() as conn:
-                query = self.inscription_transaction.select().where(
+                query = self.inscription_transaction.select().execution_options(autocommit=True).where(
                     self.inscription_transaction.c.txid == txid
                 )
                 result = await conn.execute(query)
@@ -245,7 +247,7 @@ class EventIndexer:
         try:
             async with self.engine.acquire() as conn:
                 min_block_index, max_block_index = self.get_block_index_range(block_height)
-                query = self.brc20_token_ledger_log.select().where(
+                query = self.brc20_token_ledger_log.select().execution_options(autocommit=True).where(
                     self.brc20_token_ledger_log.c.id >= min_block_index
                 ).where(
                     self.brc20_token_ledger_log.c.id <= max_block_index
