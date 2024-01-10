@@ -106,7 +106,6 @@ class EventIndexer:
         except Exception as e:
             error = f"Mysql::close: Failed close database connection {e}"
             logger.exception(error)
-            raise Exception(error)
 
     async def is_block_all_inscription_transactions_handled(self, block_height: int) -> bool:
         try:
@@ -402,6 +401,9 @@ class EventIndexer:
             self.blocks[init_block_height - 1] = await self.get_block(init_block_height - 1)
             current_block_height = init_block_height
             while not self.stopped:
+                if await self.detect_reorg(current_block_height):
+                    current_block_height -= 12
+
                 for block_height in list(self.blocks.keys()):
                     if block_height > current_block_height or block_height < current_block_height - 12:
                         self.blocks.pop(block_height)
@@ -429,9 +431,9 @@ class EventIndexer:
 
                     current_block_height += 1
 
-            self.running = False
         except Exception as e:
             logger.exception("Event indexer running into error")
             raise e
         finally:
+            self.running = False
             await self.close()

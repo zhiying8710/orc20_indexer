@@ -639,4 +639,19 @@ class Pgsql(Interface):
             logger.error(error)
             raise Exception(error)
 
+    def get_max_handled_block_height(self):
+        try:
+            async with self.engine.acquire() as conn:
+                query = self.event.select().with_only_columns(
+                    [func.min(self.event.c.block_height).label('block_height')]).where(self.event.c.handled == True)
+                result = await conn.execute(query)
+                record = await result.fetchone()
+                if not record:
+                    return None
+                return record['block_height']
+        except Exception as e:
+            error = f"Pgsql::get_max_handled_block_height: Failed to max handled event height {e}"
+            logger.error(error)
+            raise Exception(error)
+
 

@@ -1,3 +1,4 @@
+import argparse
 import os
 import sys
 import json
@@ -16,7 +17,6 @@ setup_logging()
 
 from src.main import handle_event
 from src.data.processer.pgsql import Pgsql as DataProcesser
-from src.data.redis_helper import RedisHelper
 from src.alert import send_alert
 from src.data.event.event import EventIndexer
 
@@ -26,13 +26,13 @@ class Run:
     Class representing the main execution of the indexer.
     """
 
-    def __init__(self):
+    def __init__(self, indexer):
         """
         Initialize the Run object.
         """
+        self.indexer = indexer
         self.set_signal()
 
-        self.redis_helper = RedisHelper()
         self.data_processer = DataProcesser()
         self.stop_flag = False
         self.close_flag = False
@@ -48,7 +48,6 @@ class Run:
         self.default_sleep_seconds = 10
 
         self.event_indexer = None
-        self.normal_stop_mark = os.path.join(os.path.dirname(__file__), '.stop_mark.lock')
 
     def set_signal(self):
         """
@@ -77,7 +76,6 @@ class Run:
         """
         Close the Redis connection and data processer.
         """
-        await self.redis_helper.close()
         await self.data_processer.close()
         await asyncio.sleep(3)
 
@@ -126,18 +124,6 @@ class Run:
         get the current max block height on chain
         """
         return await bitcoin_cli.get_block_count()
-
-    async def get_latest_block_height(self):
-        """
-        Get the latest block height from Redis.
-        """
-        result = await self.redis_helper.get_current_block()
-        if result is None:
-            latest_block_height = self.start_block_height - 1
-            return latest_block_height
-
-        latest_block_height = int(result)
-        return latest_block_height
 
     async def handle_block(self, block_height, is_pending=False):
         """
@@ -201,7 +187,7 @@ class Run:
 
         return
 
-    async def restart_event_indexer(self, init_block_height):
+    async def start_event_indexer(self, init_block_height):
         if self.event_indexer:
             await self.event_indexer.stop()
         self.event_indexer = EventIndexer(self.data_processer)
@@ -212,26 +198,12 @@ class Run:
         """
         Run the main execution loop.
         """
-        await self.data_processer.init_backup_height_table()
+        logger.info("loading snapshot ...")
+        await self.load_snapshot()
+        logger.info("snapshot loaded")
+
         start_block_height = self.start_block_height
-        backup_block_height = await self.data_processer.get_backup_block_height()
-        if backup_block_height:
-            if not os.path.exists(self.normal_stop_mark):
-                start_block_height = backup_block_height + 1
-                await self.data_processer.restore_all_table()
-                await self.data_processer.backup_all_table()
-            else:
-                start_block_height = await self.data_processer.get_max_event_block() + 1
-        else:
-            backup_block_height = start_block_height - 1
-            logger.info("loading snapshot ...")
-            await self.load_snapshot()
-            logger.info("snapshot loaded")
-
-        if os.path.exists(self.normal_stop_mark):
-            os.remove(self.normal_stop_mark)
-
-        await self.restart_event_indexer(start_block_height)
+        prev_proceed_block_height = (await self.data_processer.get_max_handled_block_height()) or (start_block_height - 1)
 
         while not self.stop_flag:
             latest_block_height = await self.data_processer.get_min_unhandled_block_height()
@@ -241,40 +213,51 @@ class Run:
                 await asyncio.sleep(self.default_sleep_seconds)
                 continue
 
-            if await self.event_indexer.detect_reorg(latest_block_height):
-                logger.warning("Reorg detected, restore tables")
-                if await self.data_processer.get_backup_block_height():
-                    await self.data_processer.restore_all_table()
-                await self.restart_event_indexer(backup_block_height + 1)
-                continue
+            if latest_block_height <= prev_proceed_block_height:  # reorg detected
+                self.stop_flag = True
+                break
 
             logger.info(f"Handle block {latest_block_height}")
             if not await self.handle_block(latest_block_height):
                 self.stop_flag = True
                 break
-            backup_block_height = (await self.data_processer.get_backup_block_height()) or -1
-            if latest_block_height - backup_block_height >= 12:
-                await self.data_processer.backup_all_table()
-                await self.data_processer.mark_backup_block_height(latest_block_height)
-                logger.info(f"Backup on block {latest_block_height}")
-
-        await self.event_indexer.stop()
-        with open(self.normal_stop_mark, 'w', encoding='utf-8') as f:
-            f.write("1")
-        logger.info("Stopped")
+            prev_proceed_block_height = latest_block_height
 
     async def main(self):
         """
         Main entry point of the indexer.
         """
-        await self.init()
+        if self.indexer == 'data':
+            await self.init()
 
-        while not self.close_flag:
-            await self.run()
-            self.stop_flag = False
+            while not self.close_flag:
+                await self.run()
+                self.stop_flag = False
 
-        await self.close()
+            await self.close()
+            logger.info("Data indexer stopped!")
+        elif self.indexer == 'event':
+            while not self.close_flag:
+                start_block_height = self.start_block_height
+                max_event_block = await self.data_processer.get_max_event_block()
+                if max_event_block:
+                    start_block_height = max_event_block
+                await self.start_event_indexer(start_block_height)
+                while self.event_indexer.running:
+                    await asyncio.sleep(1)
+                    if self.close_flag:
+                        await self.event_indexer.stop()
+            await self.close()
+            logger.info("Event indexer stopped!")
+        else:
+            parser.print_help()
 
 
 if __name__ == "__main__":
-    asyncio.run(Run().main())
+    parser = argparse.ArgumentParser('python run.py')
+    parser.add_argument('--indexer', type=str,
+                        help='运行event的indexer还是解析data的indexer',
+                        required=True,
+                        metavar='event or data')
+    args = parser.parse_args()
+    asyncio.run(Run(args.indexer).main())
