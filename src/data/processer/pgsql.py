@@ -639,7 +639,7 @@ class Pgsql(Interface):
             logger.error(error)
             raise Exception(error)
 
-    def get_max_handled_block_height(self):
+    async def get_max_handled_block_height(self):
         try:
             async with self.engine.acquire() as conn:
                 query = self.event.select().with_only_columns(
