@@ -127,6 +127,7 @@ class EventIndexer:
                 ).where(
                     self.inscription_transaction.c.handled == True
                 ))
+                logger.info(f"unhandled {unhandled}, handled {handled}")
                 return unhandled == 0 and handled > 0
         except Exception as e:
             error = f"Mysql::is_block_all_inscription_transactions_handled: Failed to detect block txs are all handled or not {e}"
