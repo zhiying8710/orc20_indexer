@@ -312,9 +312,9 @@ class EventIndexer:
                 continue
             break
 
-        m_brc20_ledger_logs = set([f'{brc20_ledger_log.inscription_id}:{brc20_ledger_log.txid}' for brc20_ledger_log in await self.get_block_brc20_ledger_logs(block_height)])
+        m_brc20_ledger_logs = set([brc20_ledger_log.inscription_id for brc20_ledger_log in await self.get_block_brc20_ledger_logs(block_height)])
 
-        inscription_transactions = list(filter(lambda x: f'{x.inscription_id}:{x.txid}' not in m_brc20_ledger_logs, inscription_transactions))
+        inscription_transactions = list(filter(lambda x: x.inscription_id not in m_brc20_ledger_logs, inscription_transactions))
 
         logger.info(f"Got {block_height} {len(inscription_transactions)} txs")
         tx_queue = Queue()
