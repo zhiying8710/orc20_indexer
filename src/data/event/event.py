@@ -338,7 +338,7 @@ class EventIndexer:
                     try:
                         if inscription_transaction.inscription_number < 0:
                             continue
-                        inscription_id = inscription_transaction.inscription_id
+                        inscription_id: str = inscription_transaction.inscription_id
                         # logger.info(f"Will process {block_height} {inscription_id} {inscription_transaction.txid}")
                         inscription = await self.get_inscription_by_id(inscription_id)
                         if inscription is None:
@@ -363,16 +363,25 @@ class EventIndexer:
                             if not op or (op == 'mint' and not inscription_transaction.genesis_tx):
                                 continue
                             logger.info(f"Produce new event on {block_height} {inscription_id} {inscription_transaction.txid}")
+                            block_index = inscription_transaction.block_index
+                            sender = inscription_transaction.current_owner if inscription_transaction.genesis_tx else inscription_transaction.prev_owner
+                            receiver = inscription_transaction.current_owner
+                            event_type = "INSCRIBE" if inscription_transaction.genesis_tx else "TRANSFER"
+                            if str(block_index).endswith('0000') and op == 'transfer' and not inscription_transaction.genesis_tx and inscription_id.startswith(inscription_transaction.prev_txid):
+                                raw_tx = await bitcoin_cli.get_tx_detail(inscription_transaction.txid)
+                                if raw_tx['vin'][0].get('coinbase'):  # 当gas了, 要转给自己
+                                    receiver = sender
+
                             events.append(Event(
                                 id=random_string(16),
-                                event_type="INSCRIBE" if inscription_transaction.genesis_tx else "TRANSFER",
+                                event_type=event_type,
                                 block_height=block_height,
-                                block_index=inscription_transaction.block_index,
+                                block_index=block_index,
                                 timestamp=block_time,
                                 inscription_id=inscription_id,
                                 inscription_number=inscription.inscription_number,
-                                sender=inscription_transaction.current_owner if inscription_transaction.genesis_tx else inscription_transaction.prev_owner,
-                                receiver=inscription_transaction.current_owner,
+                                sender=sender,
+                                receiver=receiver,
                                 content=content_json,
                                 operation=op,
                                 handled=True
