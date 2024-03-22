@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import json
 import os
 import sys
@@ -163,10 +164,13 @@ class EventIndexer:
 
     async def get_inscription_content_by_id(self, inscription_id: str):
         try:
-            content = await ord_cli.get_inscription_content(inscription_id)
+            inscription = await ord_cli.get_inscription_content(inscription_id)
+            content = inscription.get('content')
             if content is None:
                 raise Exception(f'Got {inscription_id} content is None')
-            return content.decode('utf-8')
+            if content:
+                content = base64.b64decode(content.encode('utf-8')).decode('utf-8')
+            return content
         except UnicodeDecodeError:
             return None
 

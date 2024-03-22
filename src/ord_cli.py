@@ -23,4 +23,4 @@ async def get_block(block: int):
 
 
 async def get_inscription_content(inscription_id):
-    return await httpx_helper.get(f'{ord_endpoint}/content/{inscription_id}', lambda x: x.content, headers=headers)
+    return await httpx_helper.get(f'{ord_endpoint}/rest/inscription/{inscription_id}', lambda x: x.json(), headers=headers)
