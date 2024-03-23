@@ -361,7 +361,7 @@ class EventIndexer:
                         except:
                             continue
                         else:
-                            if not type(content_json) == dict or not content_json.get("p", "").lower() == "orc-20":
+                            if not type(content_json) == dict or not str(content_json.get("p", "")).lower() == "orc-20":
                                 continue
                             op = content_json.get("op", "").lower()
                             if not op or (op == 'mint' and not inscription_transaction.genesis_tx):
